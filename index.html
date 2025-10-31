@@ -1,137 +1,259 @@
-#include <Wire.h>
-#include <LiquidCrystal_I2C.h>
-#include <WiFi.h>
-#include <HTTPClient.h>
-#include <Adafruit_BMP085.h>
-#include "DHT.h"
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ESP32 Air Quality — Live Dashboard</title>
+  <style>
+    body { font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; margin: 12px; background:#f7fafc; color:#0f172a; }
+    header { display:flex; align-items:center; gap:12px; margin-bottom:14px; }
+    header h1 { margin:0; font-size:1.4rem; }
+    .grid { display:grid; grid-template-columns: 1fr 360px; gap:12px; }
+    .card { background:#fff; padding:12px; border-radius:10px; box-shadow:0 6px 18px rgba(12,23,46,0.06); }
+    .cards-row { display:flex; gap:8px; margin-bottom:12px; }
+    .stat { flex:1; padding:10px; border-radius:8px; text-align:center; }
+    .stat h3 { margin:0; font-size:0.9rem; color:#334155; }
+    .stat p { margin:6px 0 0; font-size:1.25rem; font-weight:600; }
+    table { width:100%; border-collapse:collapse; font-size:0.9rem; }
+    th, td { padding:6px 8px; border-bottom:1px solid #eef2f7; text-align:left; }
+    th { font-size:0.8rem; color:#475569; }
+    .small { font-size:0.8rem; color:#64748b; }
+    canvas { max-width:100%; height:160px; }
+    footer { margin-top:18px; font-size:0.85rem; color:#64748b; }
+    .muted { color:#94a3b8; font-size:0.85rem; }
+  </style>
+  <!-- Chart.js (for charts) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1>ESP32 Air-Quality Dashboard</h1>
+    <div class="muted">Realtime logs from Firebase Realtime Database</div>
+  </header>
 
-// ==== WiFi Credentials ====
-const char* ssid = "iPhone";
-const char* password = "murugaraj6385479706";
+  <div class="grid">
+    <!-- Left: main content -->
+    <div>
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <h2 id="latest-title" style="margin:0 0 6px 0;">Latest reading</h2>
+            <div class="small" id="latest-time">—</div>
+          </div>
+          <div style="text-align:right">
+            <div class="small">Entries</div>
+            <div id="entry-count" style="font-weight:700; font-size:1.2rem;">0</div>
+          </div>
+        </div>
 
-// ==== Firebase Configuration ====
-const char* firebaseHost = "https://air-quality-e5e71-default-rtdb.asia-southeast1.firebasedatabase.app";
-const char* firebaseSecret = "jHm4xZT7CbBBVcOcNZsV0Yg2PzohStBOmxDi98aR";
+        <div class="cards-row" style="margin-top:12px;">
+          <div class="stat card" style="background:#fff;">
+            <h3>Temperature (DHT)</h3>
+            <p id="temp-dht">— °C</p>
+          </div>
+          <div class="stat card" style="background:#fff;">
+            <h3>Humidity</h3>
+            <p id="hum">— %</p>
+          </div>
+          <div class="stat card" style="background:#fff;">
+            <h3>Pressure (BMP)</h3>
+            <p id="pres">— hPa</p>
+          </div>
+        </div>
+      </div>
 
-// ==== Sensor Pins ====
-#define DHTPIN 4
-#define DHTTYPE DHT11
-#define MQ_PIN 34
-#define LDR_PIN 35
-#define RAIN_PIN 32
+      <div class="card" style="margin-top:12px;">
+        <h3 style="margin:0 0 8px 0;">Recent logs (latest first)</h3>
+        <div style="max-height:320px; overflow:auto;">
+          <table>
+            <thead>
+              <tr><th>Time</th><th>Temp(DHT)</th><th>Hum</th><th>Temp(BMP)</th><th>Pres</th><th>Gas</th><th>LDR</th><th>Rain</th></tr>
+            </thead>
+            <tbody id="log-table-body">
+              <tr><td colspan="8" class="small">Waiting for data…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
 
-// ==== Objects ====
-DHT dht(DHTPIN, DHTTYPE);
-Adafruit_BMP085 bmp;
-LiquidCrystal_I2C lcd(0x27, 16, 2);
+      <div class="card" style="margin-top:12px;">
+        <h3 style="margin:0 0 8px 0;">Trends (last ~50 samples)</h3>
+        <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:8px;">
+          <div class="card"><canvas id="chart-temp"></canvas></div>
+          <div class="card"><canvas id="chart-hum"></canvas></div>
+          <div class="card"><canvas id="chart-pres"></canvas></div>
+        </div>
+      </div>
+    </div>
 
-// ==== WiFi Connect ====
-void connectWiFi() {
-  WiFi.begin(ssid, password);
-  lcd.setCursor(0, 0);
-  lcd.print("WiFi Connecting");
-  int retry = 0;
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    lcd.print(".");
-    retry++;
-    if (retry > 30) {
-      lcd.clear();
-      lcd.print("WiFi Failed!");
-      return;
+    <!-- Right: side panel -->
+    <aside>
+      <div class="card">
+        <h3 style="margin-top:0">Connection</h3>
+        <div class="small">Firebase URL</div>
+        <div id="fb-url" class="small" style="word-break:break-all; margin-bottom:8px;"></div>
+        <div class="small">Realtime status: <span id="status" style="font-weight:700">—</span></div>
+      </div>
+
+      <div class="card" style="margin-top:12px;">
+        <h3 style="margin-top:0">Quick Info</h3>
+        <div class="small">How to use</div>
+        <ol style="padding-left:16px; margin-top:6px;">
+          <li>Push data to `/esp32_data_log/` from ESP32.</li>
+          <li>This page reads the newest items and updates live.</li>
+          <li>To deploy: create a GitHub repo and enable Pages for the `main` branch.</li>
+        </ol>
+      </div>
+    </aside>
+  </div>
+
+  <footer>
+    <div>Made for your ESP32 — <span class="small">live-read from Firebase Realtime DB</span></div>
+  </footer>
+
+  <!-- Firebase module SDK; uses your config (replace if needed) -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
+    import {
+      getDatabase,
+      ref,
+      query,
+      orderByKey,
+      limitToLast,
+      onValue,
+      get
+    } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
+
+    // ---------- PASTE YOUR FIREBASE CONFIG BELOW ----------
+    const firebaseConfig = {
+      apiKey: "AIzaSyCcFVfrAO-EOEqQcs3oZtJVLTgpF32uyb4",
+      authDomain: "air-quality-e5e71.firebaseapp.com",
+      databaseURL: "https://air-quality-e5e71-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "air-quality-e5e71",
+      storageBucket: "air-quality-e5e71.firebasestorage.app",
+      messagingSenderId: "833458600295",
+      appId: "1:833458600295:web:99a1c59c0e3f612c73d7c2"
+    };
+    // -----------------------------------------------------
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    // UI elements
+    const fbUrlEl = document.getElementById('fb-url');
+    const statusEl = document.getElementById('status');
+    const entryCountEl = document.getElementById('entry-count');
+    const latestTimeEl = document.getElementById('latest-time');
+    const tempDhtEl = document.getElementById('temp-dht');
+    const humEl = document.getElementById('hum');
+    const presEl = document.getElementById('pres');
+    const logBody = document.getElementById('log-table-body');
+
+    fbUrlEl.textContent = firebaseConfig.databaseURL || '—';
+
+    // chart setups
+    const ctxT = document.getElementById('chart-temp').getContext('2d');
+    const ctxH = document.getElementById('chart-hum').getContext('2d');
+    const ctxP = document.getElementById('chart-pres').getContext('2d');
+
+    function emptyDataset() {
+      return { labels: [], datasets: [{ label:'value', data: [], tension:0.2, pointRadius:0 }] };
     }
-  }
-  lcd.clear();
-  lcd.print("WiFi Connected");
-  delay(1000);
-  lcd.clear();
-}
+    const chartTemp = new Chart(ctxT, { type:'line', data: emptyDataset(), options:{ plugins:{legend:{display:false}}, scales:{x:{display:false}} }});
+    const chartHum  = new Chart(ctxH,  { type:'line', data: emptyDataset(), options:{ plugins:{legend:{display:false}}, scales:{x:{display:false}} }});
+    const chartPres = new Chart(ctxP, { type:'line', data: emptyDataset(), options:{ plugins:{legend:{display:false}}, scales:{x:{display:false}} }});
 
-// ==== Send to Firebase (push log) ====
-void sendToFirebase(float temp_dht, float hum, float temp_bmp, float pressure,
-                    int mq, int ldr, int rain) {
-  if (WiFi.status() == WL_CONNECTED) {
-    HTTPClient http;
+    // helper: convert numeric string key (timestamp ms) to readable time
+    function timeFromKey(k) {
+      let n = Number(k);
+      if (!isFinite(n)) return k;
+      const d = new Date(n);
+      return d.toLocaleString();
+    }
 
-    // unique timestamp key for each entry
-    String timestamp = String(millis());
-    String url = String(firebaseHost) + "/esp32_data_log/" + timestamp + ".json?auth=" + firebaseSecret;
+    // Keep small rolling arrays
+    const MAX_POINTS = 50;
+    function pushPoint(chart, label, value) {
+      chart.data.labels.push(label);
+      chart.data.datasets[0].data.push(value);
+      while (chart.data.labels.length > MAX_POINTS) chart.data.labels.shift();
+      while (chart.data.datasets[0].data.length > MAX_POINTS) chart.data.datasets[0].data.shift();
+      chart.update('none');
+    }
 
-    http.begin(url);
-    http.addHeader("Content-Type", "application/json");
+    // Watch the last N entries under /esp32_data_log
+    const logRef = query(ref(db, '/esp32_data_log'), orderByKey(), limitToLast(100));
+    onValue(logRef, (snapshot) => {
+      const data = snapshot.val();
+      if (!data) {
+        statusEl.textContent = 'No data';
+        return;
+      }
+      statusEl.textContent = 'Connected';
+      // Convert object of keys -> values into array sorted by key (ascending)
+      const entries = Object.keys(data).map(k => ({ key:k, v:data[k] })).sort((a,b)=>Number(a.key)-Number(b.key));
+      entryCountEl.textContent = entries.length;
 
-    String jsonData = "{";
-    jsonData += "\"temperature_dht\":" + String(temp_dht, 2) + ",";
-    jsonData += "\"humidity\":" + String(hum, 2) + ",";
-    jsonData += "\"temperature_bmp\":" + String(temp_bmp, 2) + ",";
-    jsonData += "\"pressure\":" + String(pressure, 2) + ",";
-    jsonData += "\"mq_sensor\":" + String(mq) + ",";
-    jsonData += "\"ldr_value\":" + String(ldr) + ",";
-    jsonData += "\"rain_value\":" + String(rain) + ",";
-    jsonData += "\"timestamp_ms\":" + timestamp;
-    jsonData += "}";
+      // Clear table body and charts
+      logBody.innerHTML = '';
+      // reset charts
+      chartTemp.data.labels = []; chartTemp.data.datasets[0].data = [];
+      chartHum.data.labels = []; chartHum.data.datasets[0].data = [];
+      chartPres.data.labels = []; chartPres.data.datasets[0].data = [];
 
-    int httpResponseCode = http.PUT(jsonData);
-    Serial.printf("Firebase response: %d\n", httpResponseCode);
-    http.end();
-  }
-}
+      // iterate and build rows (we will display newest first)
+      for (let i = entries.length - 1; i >= 0; i--) {
+        const e = entries[i];
+        const val = e.v || {};
+        const ts = val.timestamp_ms ? Number(val.timestamp_ms) : Number(e.key) || Date.now();
+        const tr = document.createElement('tr');
 
-// ==== Setup ====
-void setup() {
-  Serial.begin(115200);
-  Wire.begin(21, 22);
-  lcd.init();
-  lcd.backlight();
-  dht.begin();
+        const ttime = new Date(ts).toLocaleString();
+        const tdTime = `<td class="small">${ttime}</td>`;
+        const tdTempD = `<td>${val.temperature_dht ?? '—'}</td>`;
+        const tdHum   = `<td>${val.humidity ?? '—'}</td>`;
+        const tdTempB = `<td>${val.temperature_bmp ?? '—'}</td>`;
+        const tdPres  = `<td>${val.pressure ?? '—'}</td>`;
+        const tdGas   = `<td>${val.mq_sensor ?? '—'}</td>`;
+        const tdLdr   = `<td>${val.ldr_value ?? '—'}</td>`;
+        const tdRain  = `<td>${val.rain_value ?? '—'}</td>`;
 
-  lcd.setCursor(0, 0);
-  lcd.print("BMP180 Init...");
-  if (!bmp.begin()) {
-    lcd.clear();
-    lcd.print("BMP Error!");
-    while (1);
-  }
+        tr.innerHTML = tdTime + tdTempD + tdHum + tdTempB + tdPres + tdGas + tdLdr + tdRain;
+        logBody.appendChild(tr);
+      }
 
-  connectWiFi();
-  lcd.clear();
-  lcd.print("System Ready");
-  delay(1000);
-  lcd.clear();
-}
+      // latest entry = last element in entries
+      const latest = entries[entries.length - 1].v;
+      latestTimeEl.textContent = timeFromKey(entries[entries.length - 1].key);
+      tempDhtEl.textContent = (latest.temperature_dht !== undefined) ? `${latest.temperature_dht} °C` : '— °C';
+      humEl.textContent = (latest.humidity !== undefined) ? `${latest.humidity} %` : '— %';
+      presEl.textContent = (latest.pressure !== undefined) ? `${latest.pressure} hPa` : '— hPa';
 
-// ==== Loop ====
-void loop() {
-  float temp_dht = dht.readTemperature();
-  float hum = dht.readHumidity();
-  float temp_bmp = bmp.readTemperature();
-  float pressure = bmp.readPressure() / 100.0;
-  int mq = analogRead(MQ_PIN);
-  int ldr = analogRead(LDR_PIN);
-  int rain = analogRead(RAIN_PIN);
+      // Fill charts with ascending order
+      for (let i = 0; i < entries.length; i++) {
+        const e = entries[i];
+        const val = e.v || {};
+        const ts = e.key;
+        const label = new Date(Number(ts)).toLocaleTimeString();
+        if (val.temperature_dht !== undefined) pushPoint(chartTemp, label, Number(val.temperature_dht));
+        if (val.humidity !== undefined) pushPoint(chartHum, label, Number(val.humidity));
+        if (val.pressure !== undefined) pushPoint(chartPres, label, Number(val.pressure));
+      }
+    }, (err) => {
+      statusEl.textContent = 'Error: ' + err;
+    });
 
-  // Display on LCD
-  lcd.setCursor(0, 0);
-  lcd.print("T:");
-  lcd.print(temp_dht, 1);
-  lcd.print((char)223);
-  lcd.print("C H:");
-  lcd.print(hum, 0);
-
-  lcd.setCursor(0, 1);
-  lcd.print("L:");
-  lcd.print(ldr);
-  lcd.print(" R:");
-  lcd.print(rain);
-
-  // Serial log
-  Serial.println("---- Sensor Data ----");
-  Serial.printf("DHT Temp: %.2f°C | Humidity: %.2f%%\n", temp_dht, hum);
-  Serial.printf("BMP Temp: %.2f°C | Pressure: %.2f hPa\n", temp_bmp, pressure);
-  Serial.printf("MQ: %d | LDR: %d | Rain: %d\n", mq, ldr, rain);
-
-  // Upload to Firebase (stored with unique timestamp)
-  sendToFirebase(temp_dht, hum, temp_bmp, pressure, mq, ldr, rain);
-
-  delay(5000); // log every 5 seconds
-}
+    // Optional: fetch once quickly to show immediate status
+    (async () => {
+      try {
+        const snap = await get(ref(db, '/esp32_data_log'));
+        if (!snap.exists()) {
+          statusEl.textContent = 'No data yet';
+        }
+      } catch(e) {
+        statusEl.textContent = 'Fetch error';
+      }
+    })();
+  </script>
+</body>
+</html>
