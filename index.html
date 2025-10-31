@@ -1,259 +1,1483 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>ESP32 Air Quality — Live Dashboard</title>
-  <style>
-    body { font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; margin: 12px; background:#f7fafc; color:#0f172a; }
-    header { display:flex; align-items:center; gap:12px; margin-bottom:14px; }
-    header h1 { margin:0; font-size:1.4rem; }
-    .grid { display:grid; grid-template-columns: 1fr 360px; gap:12px; }
-    .card { background:#fff; padding:12px; border-radius:10px; box-shadow:0 6px 18px rgba(12,23,46,0.06); }
-    .cards-row { display:flex; gap:8px; margin-bottom:12px; }
-    .stat { flex:1; padding:10px; border-radius:8px; text-align:center; }
-    .stat h3 { margin:0; font-size:0.9rem; color:#334155; }
-    .stat p { margin:6px 0 0; font-size:1.25rem; font-weight:600; }
-    table { width:100%; border-collapse:collapse; font-size:0.9rem; }
-    th, td { padding:6px 8px; border-bottom:1px solid #eef2f7; text-align:left; }
-    th { font-size:0.8rem; color:#475569; }
-    .small { font-size:0.8rem; color:#64748b; }
-    canvas { max-width:100%; height:160px; }
-    footer { margin-top:18px; font-size:0.85rem; color:#64748b; }
-    .muted { color:#94a3b8; font-size:0.85rem; }
-  </style>
-  <!-- Chart.js (for charts) -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-</head>
-<body>
-  <header>
-    <h1>ESP32 Air-Quality Dashboard</h1>
-    <div class="muted">Realtime logs from Firebase Realtime Database</div>
-  </header>
+#include <WiFi.h>
+#include <WebServer.h>
+#include <EEPROM.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
 
-  <div class="grid">
-    <!-- Left: main content -->
-    <div>
-      <div class="card">
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-          <div>
-            <h2 id="latest-title" style="margin:0 0 6px 0;">Latest reading</h2>
-            <div class="small" id="latest-time">—</div>
+// ================= LCD SETUP =================
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+// ================= SENSOR PINS =================
+#define PH_PIN 34
+#define TDS_PIN 35
+
+// ================= EEPROM ADDRESSES =================
+#define ADDR_PH_CAL 0
+#define ADDR_TDS_CAL 4
+
+// ================= GLOBAL VARIABLES =================
+float PH_CALIBRATION = 3.5;
+float TDS_FACTOR = 0.5;
+
+// ================= WIFI SETTINGS =================
+const char* ssid = "FlavourSense";
+const char* password = "12345678";
+
+WebServer server(80);
+
+// ================= FUNCTION DECLARATIONS =================
+String classifyFlavour(float ph, float tds);
+void handleRoot();
+void handleSave();
+void handleTest();
+void readSensors(float &ph, float &tds, String &flavour);
+
+// =========================================================
+void setup() {
+  Serial.begin(115200);
+  Wire.begin(21, 22);
+  lcd.init();
+  lcd.backlight();
+  EEPROM.begin(64);
+
+  // Load calibration values from EEPROM
+  EEPROM.get(ADDR_PH_CAL, PH_CALIBRATION);
+  EEPROM.get(ADDR_TDS_CAL, TDS_FACTOR);
+
+  if (isnan(PH_CALIBRATION) || isnan(TDS_FACTOR)) {
+    PH_CALIBRATION = 3.5;
+    TDS_FACTOR = 0.5;
+  }
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Flavour Sense IoT");
+  lcd.setCursor(0, 1);
+  lcd.print("WiFi Starting...");
+  delay(2000);
+
+  // Start WiFi Access Point
+  WiFi.softAP(ssid, password);
+  Serial.println();
+  Serial.print("WiFi AP Started. Connect to: ");
+  Serial.println(ssid);
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.softAPIP());
+
+  // Setup web routes
+  server.on("/", handleRoot);
+  server.on("/save", handleSave);
+  server.on("/test", handleTest);
+  server.begin();
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("IP:");
+  lcd.print(WiFi.softAPIP());
+  delay(2000);
+}
+
+// =========================================================
+void loop() {
+  server.handleClient();
+
+  float ph, tds;
+  String flavour;
+  readSensors(ph, tds, flavour);
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("pH:");
+  lcd.print(ph, 2);
+  lcd.print(" T:");
+  lcd.print(tds, 0);
+  lcd.setCursor(0, 1);
+  lcd.print("Taste:");
+  lcd.print(flavour);
+
+  delay(1500);
+}
+
+// =========================================================
+void readSensors(float &ph, float &tds, String &flavour) {
+  int phValue = analogRead(PH_PIN);
+  int tdsValue = analogRead(TDS_PIN);
+
+  float phVoltage = (phValue / 4095.0) * 3.3;
+  float tdsVoltage = (tdsValue / 4095.0) * 3.3;
+
+  ph = 7 + ((2.5 - phVoltage) * PH_CALIBRATION);
+  tds = (tdsVoltage * 1000) * TDS_FACTOR;
+  flavour = classifyFlavour(ph, tds);
+}
+
+// =========================================================
+String classifyFlavour(float ph, float tds) {
+  if (ph < 4.5 && tds > 300) return "Sour";
+  else if (ph >= 6.5 && ph <= 7.5 && tds > 400) return "Salty";
+  else if (ph > 7.5 && tds < 200) return "Bitter";
+  else if (ph > 6 && tds < 100) return "Sweet";
+  else if (tds > 600) return "Strong";
+  else return "Neutral";
+}
+
+// =========================================================
+void handleRoot() {
+  float ph, tds;
+  String flavour;
+  readSensors(ph, tds, flavour);
+
+  String html = R"rawliteral(
+  <!DOCTYPE html>
+  <html lang="en">
+  <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Flavour Sense IoT</title>
+      <style>
+          * {
+              margin: 0;
+              padding: 0;
+              box-sizing: border-box;
+          }
+          
+          body {
+              font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+              background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+              min-height: 100vh;
+              padding: 20px;
+              color: #333;
+          }
+          
+          .container {
+              max-width: 800px;
+              margin: 0 auto;
+              background: rgba(255, 255, 255, 0.95);
+              border-radius: 20px;
+              box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+              overflow: hidden;
+              backdrop-filter: blur(10px);
+          }
+          
+          .header {
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              color: white;
+              padding: 30px;
+              text-align: center;
+          }
+          
+          .header h1 {
+              font-size: 2.5em;
+              margin-bottom: 10px;
+              font-weight: 300;
+          }
+          
+          .header p {
+              opacity: 0.9;
+              font-size: 1.1em;
+          }
+          
+          .content {
+              padding: 40px;
+          }
+          
+          .sensor-grid {
+              display: grid;
+              grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+              gap: 25px;
+              margin-bottom: 40px;
+          }
+          
+          .sensor-card {
+              background: white;
+              padding: 25px;
+              border-radius: 15px;
+              box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+              text-align: center;
+              border-left: 4px solid #667eea;
+              transition: transform 0.3s ease;
+          }
+          
+          .sensor-card:hover {
+              transform: translateY(-5px);
+          }
+          
+          .sensor-card h3 {
+              color: #667eea;
+              margin-bottom: 15px;
+              font-weight: 500;
+          }
+          
+          .sensor-value {
+              font-size: 2.2em;
+              font-weight: 300;
+              color: #333;
+          }
+          
+          .sensor-unit {
+              color: #666;
+              font-size: 0.9em;
+              margin-left: 5px;
+          }
+          
+          .flavour-card {
+              background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
+              color: white;
+              padding: 30px;
+              border-radius: 15px;
+              text-align: center;
+              margin-bottom: 40px;
+              box-shadow: 0 8px 25px rgba(255, 154, 158, 0.3);
+          }
+          
+          .flavour-card h3 {
+              margin-bottom: 15px;
+              font-weight: 400;
+          }
+          
+          .flavour-value {
+              font-size: 2.5em;
+              font-weight: 300;
+              text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+          }
+          
+          .action-buttons {
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 15px;
+              margin-bottom: 30px;
+          }
+          
+          .btn {
+              padding: 15px 25px;
+              border: none;
+              border-radius: 10px;
+              font-size: 16px;
+              font-weight: 500;
+              cursor: pointer;
+              transition: all 0.3s ease;
+              text-decoration: none;
+              text-align: center;
+              display: inline-block;
+          }
+          
+          .btn-test {
+              background: linear-gradient(135deg, #4ECDC4 0%, #44A08D 100%);
+              color: white;
+          }
+          
+          .btn-test:hover {
+              transform: translateY(-2px);
+              box-shadow: 0 8px 20px rgba(78, 205, 196, 0.4);
+          }
+          
+          .btn-calibrate {
+              background: linear-gradient(135deg, #FFB347 0%, #FFCC33 100%);
+              color: white;
+          }
+          
+          .btn-calibrate:hover {
+              transform: translateY(-2px);
+              box-shadow: 0 8px 20px rgba(255, 179, 71, 0.4);
+          }
+          
+          .calibration-form {
+              background: white;
+              padding: 30px;
+              border-radius: 15px;
+              box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+          }
+          
+          .calibration-form h3 {
+              color: #667eea;
+              margin-bottom: 25px;
+              font-weight: 500;
+          }
+          
+          .form-group {
+              margin-bottom: 20px;
+          }
+          
+          .form-group label {
+              display: block;
+              margin-bottom: 8px;
+              color: #555;
+              font-weight: 500;
+          }
+          
+          .form-group input {
+              width: 100%;
+              padding: 12px 15px;
+              border: 2px solid #e1e5ee;
+              border-radius: 10px;
+              font-size: 16px;
+              transition: border-color 0.3s ease;
+              background: #f8f9fa;
+          }
+          
+          .form-group input:focus {
+              outline: none;
+              border-color: #667eea;
+              background: white;
+          }
+          
+          .btn-submit {
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              color: white;
+              border: none;
+              padding: 15px 30px;
+              border-radius: 10px;
+              font-size: 16px;
+              cursor: pointer;
+              transition: transform 0.3s ease, box-shadow 0.3s ease;
+              font-weight: 500;
+              width: 100%;
+          }
+          
+          .btn-submit:hover {
+              transform: translateY(-2px);
+              box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+          }
+          
+          .footer {
+              text-align: center;
+              margin-top: 30px;
+              color: #666;
+              font-size: 0.9em;
+          }
+          
+          @media (max-width: 600px) {
+              .content {
+                  padding: 20px;
+              }
+              
+              .header h1 {
+                  font-size: 2em;
+              }
+              
+              .sensor-grid {
+                  grid-template-columns: 1fr;
+              }
+              
+              .action-buttons {
+                  grid-template-columns: 1fr;
+              }
+          }
+      </style>
+  </head>
+  <body>
+      <div class="container">
+          <div class="header">
+              <h1>🍽️ Flavour Sense IoT</h1>
+              <p>Real-time Taste Analysis System</p>
           </div>
-          <div style="text-align:right">
-            <div class="small">Entries</div>
-            <div id="entry-count" style="font-weight:700; font-size:1.2rem;">0</div>
+          
+          <div class="content">
+              <div class="sensor-grid">
+                  <div class="sensor-card">
+                      <h3>pH Level</h3>
+                      <div class="sensor-value">)rawliteral";
+  html += String(ph, 2);
+  html += R"rawliteral(<span class="sensor-unit">pH</span></div>
+                  </div>
+                  
+                  <div class="sensor-card">
+                      <h3>TDS Value</h3>
+                      <div class="sensor-value">)rawliteral";
+  html += String(tds, 0);
+  html += R"rawliteral(<span class="sensor-unit">ppm</span></div>
+                  </div>
+              </div>
+              
+              <div class="flavour-card">
+                  <h3>Detected Flavour Profile</h3>
+                  <div class="flavour-value">)rawliteral";
+  html += flavour;
+  html += R"rawliteral(</div>
+              </div>
+              
+              <div class="action-buttons">
+                  <a href="/test" class="btn btn-test">🧪 Run Test</a>
+                  <a href="#calibration" class="btn btn-calibrate">⚙️ Calibrate Sensors</a>
+              </div>
+              
+              <div class="calibration-form" id="calibration">
+                  <h3>⚙️ Sensor Calibration</h3>
+                  <form action='/save' method='GET'>
+                      <div class="form-group">
+                          <label for="ph">pH Calibration Factor:</label>
+                          <input type='number' step='0.01' name='ph' id='ph' value=')rawliteral";
+  html += String(PH_CALIBRATION, 2);
+  html += R"rawliteral('>
+                      </div>
+                      
+                      <div class="form-group">
+                          <label for="tds">TDS Calibration Factor:</label>
+                          <input type='number' step='0.01' name='tds' id='tds' value=')rawliteral";
+  html += String(TDS_FACTOR, 2);
+  html += R"rawliteral('>
+                      </div>
+                      
+                      <button type="submit" class="btn-submit">💾 Save Calibration</button>
+                  </form>
+              </div>
+              
+              <div class="footer">
+                  <p>ESP32 IoT System • IP: )rawliteral";
+  html += WiFi.softAPIP().toString();
+  html += R"rawliteral(</p>
+              </div>
           </div>
+      </div>
+  </body>
+  </html>
+  )rawliteral";
+
+  server.send(200, "text/html", html);
+}
+
+// =========================================================
+void handleTest() {
+  float ph, tds;
+  String flavour;
+  readSensors(ph, tds, flavour);
+
+  String html = R"rawliteral(
+  <!DOCTYPE html>
+  <html lang="en">
+  <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Test Results - Flavour Sense IoT</title>
+      <style>
+          * {
+              margin: 0;
+              padding: 0;
+              box-sizing: border-box;
+          }
+          
+          body {
+              font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+              background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+              min-height: 100vh;
+              padding: 20px;
+              color: #333;
+              display: flex;
+              justify-content: center;
+              align-items: center;
+          }
+          
+          .test-container {
+              max-width: 600px;
+              width: 100%;
+              background: rgba(255, 255, 255, 0.95);
+              border-radius: 20px;
+              box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+              overflow: hidden;
+              backdrop-filter: blur(10px);
+          }
+          
+          .test-header {
+              background: linear-gradient(135deg, #4ECDC4 0%, #44A08D 100%);
+              color: white;
+              padding: 30px;
+              text-align: center;
+          }
+          
+          .test-header h1 {
+              font-size: 2.2em;
+              margin-bottom: 10px;
+              font-weight: 300;
+          }
+          
+          .test-content {
+              padding: 40px;
+              text-align: center;
+          }
+          
+          .test-icon {
+              font-size: 4em;
+              margin-bottom: 20px;
+          }
+          
+          .test-results {
+              background: white;
+              padding: 25px;
+              border-radius: 15px;
+              box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+              margin-bottom: 30px;
+          }
+          
+          .result-item {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              padding: 15px 0;
+              border-bottom: 1px solid #f0f0f0;
+          }
+          
+          .result-item:last-child {
+              border-bottom: none;
+          }
+          
+          .result-label {
+              font-weight: 500;
+              color: #555;
+          }
+          
+          .result-value {
+              font-size: 1.3em;
+              font-weight: 600;
+              color: #333;
+          }
+          
+          .flavour-result {
+              background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
+              color: white;
+              padding: 25px;
+              border-radius: 15px;
+              margin: 25px 0;
+              box-shadow: 0 8px 25px rgba(255, 154, 158, 0.3);
+          }
+          
+          .flavour-label {
+              font-size: 1.1em;
+              margin-bottom: 10px;
+              opacity: 0.9;
+          }
+          
+          .flavour-value {
+              font-size: 2.2em;
+              font-weight: 300;
+          }
+          
+          .action-buttons {
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 15px;
+              margin-top: 30px;
+          }
+          
+          .btn {
+              padding: 15px 25px;
+              border: none;
+              border-radius: 10px;
+              font-size: 16px;
+              font-weight: 500;
+              cursor: pointer;
+              transition: all 0.3s ease;
+              text-decoration: none;
+              text-align: center;
+              display: inline-block;
+          }
+          
+          .btn-primary {
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              color: white;
+          }
+          
+          .btn-primary:hover {
+              transform: translateY(-2px);
+              box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+          }
+          
+          .btn-secondary {
+              background: linear-gradient(135deg, #4ECDC4 0%, #44A08D 100%);
+              color: white;
+          }
+          
+          .btn-secondary:hover {
+              transform: translateY(-2px);
+              box-shadow: 0 8px 20px rgba(78, 205, 196, 0.4);
+          }
+          
+          .test-timestamp {
+              color: #666;
+              font-size: 0.9em;
+              margin-top: 20px;
+          }
+      </style>
+  </head>
+  <body>
+      <div class="test-container">
+          <div class="test-header">
+              <h1>🧪 Test Results</h1>
+              <p>Current Sensor Readings</p>
+          </div>
+          
+          <div class="test-content">
+              <div class="test-icon">🔍</div>
+              
+              <div class="test-results">
+                  <div class="result-item">
+                      <span class="result-label">pH Level:</span>
+                      <span class="result-value">)rawliteral";
+  html += String(ph, 2);
+  html += R"rawliteral( pH</span>
+                  </div>
+                  
+                  <div class="result-item">
+                      <span class="result-label">TDS Value:</span>
+                      <span class="result-value">)rawliteral";
+  html += String(tds, 0);
+  html += R"rawliteral( ppm</span>
+                  </div>
+                  
+                  <div class="result-item">
+                      <span class="result-label">Raw pH Voltage:</span>
+                      <span class="result-value">)rawliteral";
+  html += String((analogRead(PH_PIN) / 4095.0) * 3.3, 3);
+  html += R"rawliteral( V</span>
+                  </div>
+                  
+                  <div class="result-item">
+                      <span class="result-label">Raw TDS Voltage:</span>
+                      <span class="result-value">)rawliteral";
+  html += String((analogRead(TDS_PIN) / 4095.0) * 3.3, 3);
+  html += R"rawliteral( V</span>
+                  </div>
+              </div>
+              
+              <div class="flavour-result">
+                  <div class="flavour-label">Detected Flavour</div>
+                  <div class="flavour-value">)rawliteral";
+  html += flavour;
+  html += R"rawliteral(</div>
+              </div>
+              
+              <div class="action-buttons">
+                  <a href="/" class="btn btn-primary">📊 Dashboard</a>
+                  <a href="/test" class="btn btn-secondary">🔄 Test Again</a>
+              </div>
+              
+              <div class="test-timestamp">
+                  Test performed at: )rawliteral";
+  
+  // Add timestamp
+  unsigned long currentTime = millis();
+  unsigned long seconds = currentTime / 1000;
+  unsigned long minutes = seconds / 60;
+  unsigned long hours = minutes / 60;
+  html += String(hours % 24) + ":" + String(minutes % 60) + ":" + String(seconds % 60);
+  
+  html += R"rawliteral(
+              </div>
+          </div>
+      </div>
+  </body>
+  </html>
+  )rawliteral";
+
+  server.send(200, "text/html", html);
+}
+
+// =========================================================
+void handleSave() {
+  if (server.hasArg("ph") && server.hasArg("tds")) {
+    PH_CALIBRATION = server.arg("ph").toFloat();
+    TDS_FACTOR = server.arg("tds").toFloat();
+
+    EEPROM.put(ADDR_PH_CAL, PH_CALIBRATION);
+    EEPROM.put(ADDR_TDS_CAL, TDS_FACTOR);
+    EEPROM.commit();
+
+    String html = R"rawliteral(
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Calibration Saved</title>
+        <style>
+            body {
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                min-height: 100vh;
+                margin: 0;
+            }
+            .message {
+                background: white;
+                padding: 40px;
+                border-radius: 20px;
+                box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+                text-align: center;
+            }
+            .success {
+                color: #4CAF50;
+                font-size: 3em;
+                margin-bottom: 20px;
+            }
+            .btn {
+                display: inline-block;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                padding: 12px 24px;
+                text-decoration: none;
+                border-radius: 10px;
+                margin-top: 20px;
+                transition: transform 0.3s ease;
+            }
+            .btn:hover {
+                transform: translateY(-2px);
+            }
+        </style>
+    </head>
+    <body>
+        <div class="message">
+            <div class="success">✅</div>
+            <h2>Calibration Saved Successfully!</h2>
+            <p>New settings have been stored in EEPROM.</p>
+            <a href="/" class="btn">Return to Dashboard</a>
         </div>
+    </body>
+    </html>
+    )rawliteral";
+    
+    server.send(200, "text/html", html);
+    Serial.println("Calibration updated and saved to EEPROM!");
+  } else {
+    server.send(400, "text/plain", "Missing parameters!");
+  }
+}#include <WiFi.h>
+#include <WebServer.h>
+#include <EEPROM.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
 
-        <div class="cards-row" style="margin-top:12px;">
-          <div class="stat card" style="background:#fff;">
-            <h3>Temperature (DHT)</h3>
-            <p id="temp-dht">— °C</p>
+// ================= LCD SETUP =================
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+// ================= SENSOR PINS =================
+#define PH_PIN 34
+#define TDS_PIN 35
+
+// ================= EEPROM ADDRESSES =================
+#define ADDR_PH_CAL 0
+#define ADDR_TDS_CAL 4
+
+// ================= GLOBAL VARIABLES =================
+float PH_CALIBRATION = 3.5;
+float TDS_FACTOR = 0.5;
+
+// ================= WIFI SETTINGS =================
+const char* ssid = "FlavourSense";
+const char* password = "12345678";
+
+WebServer server(80);
+
+// ================= FUNCTION DECLARATIONS =================
+String classifyFlavour(float ph, float tds);
+void handleRoot();
+void handleSave();
+void handleTest();
+void readSensors(float &ph, float &tds, String &flavour);
+
+// =========================================================
+void setup() {
+  Serial.begin(115200);
+  Wire.begin(21, 22);
+  lcd.init();
+  lcd.backlight();
+  EEPROM.begin(64);
+
+  // Load calibration values from EEPROM
+  EEPROM.get(ADDR_PH_CAL, PH_CALIBRATION);
+  EEPROM.get(ADDR_TDS_CAL, TDS_FACTOR);
+
+  if (isnan(PH_CALIBRATION) || isnan(TDS_FACTOR)) {
+    PH_CALIBRATION = 3.5;
+    TDS_FACTOR = 0.5;
+  }
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Flavour Sense IoT");
+  lcd.setCursor(0, 1);
+  lcd.print("WiFi Starting...");
+  delay(2000);
+
+  // Start WiFi Access Point
+  WiFi.softAP(ssid, password);
+  Serial.println();
+  Serial.print("WiFi AP Started. Connect to: ");
+  Serial.println(ssid);
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.softAPIP());
+
+  // Setup web routes
+  server.on("/", handleRoot);
+  server.on("/save", handleSave);
+  server.on("/test", handleTest);
+  server.begin();
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("IP:");
+  lcd.print(WiFi.softAPIP());
+  delay(2000);
+}
+
+// =========================================================
+void loop() {
+  server.handleClient();
+
+  float ph, tds;
+  String flavour;
+  readSensors(ph, tds, flavour);
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("pH:");
+  lcd.print(ph, 2);
+  lcd.print(" T:");
+  lcd.print(tds, 0);
+  lcd.setCursor(0, 1);
+  lcd.print("Taste:");
+  lcd.print(flavour);
+
+  delay(1500);
+}
+
+// =========================================================
+void readSensors(float &ph, float &tds, String &flavour) {
+  int phValue = analogRead(PH_PIN);
+  int tdsValue = analogRead(TDS_PIN);
+
+  float phVoltage = (phValue / 4095.0) * 3.3;
+  float tdsVoltage = (tdsValue / 4095.0) * 3.3;
+
+  ph = 7 + ((2.5 - phVoltage) * PH_CALIBRATION);
+  tds = (tdsVoltage * 1000) * TDS_FACTOR;
+  flavour = classifyFlavour(ph, tds);
+}
+
+// =========================================================
+String classifyFlavour(float ph, float tds) {
+  if (ph < 4.5 && tds > 300) return "Sour";
+  else if (ph >= 6.5 && ph <= 7.5 && tds > 400) return "Salty";
+  else if (ph > 7.5 && tds < 200) return "Bitter";
+  else if (ph > 6 && tds < 100) return "Sweet";
+  else if (tds > 600) return "Strong";
+  else return "Neutral";
+}
+
+// =========================================================
+void handleRoot() {
+  float ph, tds;
+  String flavour;
+  readSensors(ph, tds, flavour);
+
+  String html = R"rawliteral(
+  <!DOCTYPE html>
+  <html lang="en">
+  <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Flavour Sense IoT</title>
+      <style>
+          * {
+              margin: 0;
+              padding: 0;
+              box-sizing: border-box;
+          }
+          
+          body {
+              font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+              background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+              min-height: 100vh;
+              padding: 20px;
+              color: #333;
+          }
+          
+          .container {
+              max-width: 800px;
+              margin: 0 auto;
+              background: rgba(255, 255, 255, 0.95);
+              border-radius: 20px;
+              box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+              overflow: hidden;
+              backdrop-filter: blur(10px);
+          }
+          
+          .header {
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              color: white;
+              padding: 30px;
+              text-align: center;
+          }
+          
+          .header h1 {
+              font-size: 2.5em;
+              margin-bottom: 10px;
+              font-weight: 300;
+          }
+          
+          .header p {
+              opacity: 0.9;
+              font-size: 1.1em;
+          }
+          
+          .content {
+              padding: 40px;
+          }
+          
+          .sensor-grid {
+              display: grid;
+              grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+              gap: 25px;
+              margin-bottom: 40px;
+          }
+          
+          .sensor-card {
+              background: white;
+              padding: 25px;
+              border-radius: 15px;
+              box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+              text-align: center;
+              border-left: 4px solid #667eea;
+              transition: transform 0.3s ease;
+          }
+          
+          .sensor-card:hover {
+              transform: translateY(-5px);
+          }
+          
+          .sensor-card h3 {
+              color: #667eea;
+              margin-bottom: 15px;
+              font-weight: 500;
+          }
+          
+          .sensor-value {
+              font-size: 2.2em;
+              font-weight: 300;
+              color: #333;
+          }
+          
+          .sensor-unit {
+              color: #666;
+              font-size: 0.9em;
+              margin-left: 5px;
+          }
+          
+          .flavour-card {
+              background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
+              color: white;
+              padding: 30px;
+              border-radius: 15px;
+              text-align: center;
+              margin-bottom: 40px;
+              box-shadow: 0 8px 25px rgba(255, 154, 158, 0.3);
+          }
+          
+          .flavour-card h3 {
+              margin-bottom: 15px;
+              font-weight: 400;
+          }
+          
+          .flavour-value {
+              font-size: 2.5em;
+              font-weight: 300;
+              text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+          }
+          
+          .action-buttons {
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 15px;
+              margin-bottom: 30px;
+          }
+          
+          .btn {
+              padding: 15px 25px;
+              border: none;
+              border-radius: 10px;
+              font-size: 16px;
+              font-weight: 500;
+              cursor: pointer;
+              transition: all 0.3s ease;
+              text-decoration: none;
+              text-align: center;
+              display: inline-block;
+          }
+          
+          .btn-test {
+              background: linear-gradient(135deg, #4ECDC4 0%, #44A08D 100%);
+              color: white;
+          }
+          
+          .btn-test:hover {
+              transform: translateY(-2px);
+              box-shadow: 0 8px 20px rgba(78, 205, 196, 0.4);
+          }
+          
+          .btn-calibrate {
+              background: linear-gradient(135deg, #FFB347 0%, #FFCC33 100%);
+              color: white;
+          }
+          
+          .btn-calibrate:hover {
+              transform: translateY(-2px);
+              box-shadow: 0 8px 20px rgba(255, 179, 71, 0.4);
+          }
+          
+          .calibration-form {
+              background: white;
+              padding: 30px;
+              border-radius: 15px;
+              box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+          }
+          
+          .calibration-form h3 {
+              color: #667eea;
+              margin-bottom: 25px;
+              font-weight: 500;
+          }
+          
+          .form-group {
+              margin-bottom: 20px;
+          }
+          
+          .form-group label {
+              display: block;
+              margin-bottom: 8px;
+              color: #555;
+              font-weight: 500;
+          }
+          
+          .form-group input {
+              width: 100%;
+              padding: 12px 15px;
+              border: 2px solid #e1e5ee;
+              border-radius: 10px;
+              font-size: 16px;
+              transition: border-color 0.3s ease;
+              background: #f8f9fa;
+          }
+          
+          .form-group input:focus {
+              outline: none;
+              border-color: #667eea;
+              background: white;
+          }
+          
+          .btn-submit {
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              color: white;
+              border: none;
+              padding: 15px 30px;
+              border-radius: 10px;
+              font-size: 16px;
+              cursor: pointer;
+              transition: transform 0.3s ease, box-shadow 0.3s ease;
+              font-weight: 500;
+              width: 100%;
+          }
+          
+          .btn-submit:hover {
+              transform: translateY(-2px);
+              box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+          }
+          
+          .footer {
+              text-align: center;
+              margin-top: 30px;
+              color: #666;
+              font-size: 0.9em;
+          }
+          
+          @media (max-width: 600px) {
+              .content {
+                  padding: 20px;
+              }
+              
+              .header h1 {
+                  font-size: 2em;
+              }
+              
+              .sensor-grid {
+                  grid-template-columns: 1fr;
+              }
+              
+              .action-buttons {
+                  grid-template-columns: 1fr;
+              }
+          }
+      </style>
+  </head>
+  <body>
+      <div class="container">
+          <div class="header">
+              <h1>🍽️ Flavour Sense IoT</h1>
+              <p>Real-time Taste Analysis System</p>
           </div>
-          <div class="stat card" style="background:#fff;">
-            <h3>Humidity</h3>
-            <p id="hum">— %</p>
+          
+          <div class="content">
+              <div class="sensor-grid">
+                  <div class="sensor-card">
+                      <h3>pH Level</h3>
+                      <div class="sensor-value">)rawliteral";
+  html += String(ph, 2);
+  html += R"rawliteral(<span class="sensor-unit">pH</span></div>
+                  </div>
+                  
+                  <div class="sensor-card">
+                      <h3>TDS Value</h3>
+                      <div class="sensor-value">)rawliteral";
+  html += String(tds, 0);
+  html += R"rawliteral(<span class="sensor-unit">ppm</span></div>
+                  </div>
+              </div>
+              
+              <div class="flavour-card">
+                  <h3>Detected Flavour Profile</h3>
+                  <div class="flavour-value">)rawliteral";
+  html += flavour;
+  html += R"rawliteral(</div>
+              </div>
+              
+              <div class="action-buttons">
+                  <a href="/test" class="btn btn-test">🧪 Run Test</a>
+                  <a href="#calibration" class="btn btn-calibrate">⚙️ Calibrate Sensors</a>
+              </div>
+              
+              <div class="calibration-form" id="calibration">
+                  <h3>⚙️ Sensor Calibration</h3>
+                  <form action='/save' method='GET'>
+                      <div class="form-group">
+                          <label for="ph">pH Calibration Factor:</label>
+                          <input type='number' step='0.01' name='ph' id='ph' value=')rawliteral";
+  html += String(PH_CALIBRATION, 2);
+  html += R"rawliteral('>
+                      </div>
+                      
+                      <div class="form-group">
+                          <label for="tds">TDS Calibration Factor:</label>
+                          <input type='number' step='0.01' name='tds' id='tds' value=')rawliteral";
+  html += String(TDS_FACTOR, 2);
+  html += R"rawliteral('>
+                      </div>
+                      
+                      <button type="submit" class="btn-submit">💾 Save Calibration</button>
+                  </form>
+              </div>
+              
+              <div class="footer">
+                  <p>ESP32 IoT System • IP: )rawliteral";
+  html += WiFi.softAPIP().toString();
+  html += R"rawliteral(</p>
+              </div>
           </div>
-          <div class="stat card" style="background:#fff;">
-            <h3>Pressure (BMP)</h3>
-            <p id="pres">— hPa</p>
+      </div>
+  </body>
+  </html>
+  )rawliteral";
+
+  server.send(200, "text/html", html);
+}
+
+// =========================================================
+void handleTest() {
+  float ph, tds;
+  String flavour;
+  readSensors(ph, tds, flavour);
+
+  String html = R"rawliteral(
+  <!DOCTYPE html>
+  <html lang="en">
+  <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Test Results - Flavour Sense IoT</title>
+      <style>
+          * {
+              margin: 0;
+              padding: 0;
+              box-sizing: border-box;
+          }
+          
+          body {
+              font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+              background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+              min-height: 100vh;
+              padding: 20px;
+              color: #333;
+              display: flex;
+              justify-content: center;
+              align-items: center;
+          }
+          
+          .test-container {
+              max-width: 600px;
+              width: 100%;
+              background: rgba(255, 255, 255, 0.95);
+              border-radius: 20px;
+              box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+              overflow: hidden;
+              backdrop-filter: blur(10px);
+          }
+          
+          .test-header {
+              background: linear-gradient(135deg, #4ECDC4 0%, #44A08D 100%);
+              color: white;
+              padding: 30px;
+              text-align: center;
+          }
+          
+          .test-header h1 {
+              font-size: 2.2em;
+              margin-bottom: 10px;
+              font-weight: 300;
+          }
+          
+          .test-content {
+              padding: 40px;
+              text-align: center;
+          }
+          
+          .test-icon {
+              font-size: 4em;
+              margin-bottom: 20px;
+          }
+          
+          .test-results {
+              background: white;
+              padding: 25px;
+              border-radius: 15px;
+              box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+              margin-bottom: 30px;
+          }
+          
+          .result-item {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              padding: 15px 0;
+              border-bottom: 1px solid #f0f0f0;
+          }
+          
+          .result-item:last-child {
+              border-bottom: none;
+          }
+          
+          .result-label {
+              font-weight: 500;
+              color: #555;
+          }
+          
+          .result-value {
+              font-size: 1.3em;
+              font-weight: 600;
+              color: #333;
+          }
+          
+          .flavour-result {
+              background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
+              color: white;
+              padding: 25px;
+              border-radius: 15px;
+              margin: 25px 0;
+              box-shadow: 0 8px 25px rgba(255, 154, 158, 0.3);
+          }
+          
+          .flavour-label {
+              font-size: 1.1em;
+              margin-bottom: 10px;
+              opacity: 0.9;
+          }
+          
+          .flavour-value {
+              font-size: 2.2em;
+              font-weight: 300;
+          }
+          
+          .action-buttons {
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 15px;
+              margin-top: 30px;
+          }
+          
+          .btn {
+              padding: 15px 25px;
+              border: none;
+              border-radius: 10px;
+              font-size: 16px;
+              font-weight: 500;
+              cursor: pointer;
+              transition: all 0.3s ease;
+              text-decoration: none;
+              text-align: center;
+              display: inline-block;
+          }
+          
+          .btn-primary {
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              color: white;
+          }
+          
+          .btn-primary:hover {
+              transform: translateY(-2px);
+              box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+          }
+          
+          .btn-secondary {
+              background: linear-gradient(135deg, #4ECDC4 0%, #44A08D 100%);
+              color: white;
+          }
+          
+          .btn-secondary:hover {
+              transform: translateY(-2px);
+              box-shadow: 0 8px 20px rgba(78, 205, 196, 0.4);
+          }
+          
+          .test-timestamp {
+              color: #666;
+              font-size: 0.9em;
+              margin-top: 20px;
+          }
+      </style>
+  </head>
+  <body>
+      <div class="test-container">
+          <div class="test-header">
+              <h1>🧪 Test Results</h1>
+              <p>Current Sensor Readings</p>
           </div>
+          
+          <div class="test-content">
+              <div class="test-icon">🔍</div>
+              
+              <div class="test-results">
+                  <div class="result-item">
+                      <span class="result-label">pH Level:</span>
+                      <span class="result-value">)rawliteral";
+  html += String(ph, 2);
+  html += R"rawliteral( pH</span>
+                  </div>
+                  
+                  <div class="result-item">
+                      <span class="result-label">TDS Value:</span>
+                      <span class="result-value">)rawliteral";
+  html += String(tds, 0);
+  html += R"rawliteral( ppm</span>
+                  </div>
+                  
+                  <div class="result-item">
+                      <span class="result-label">Raw pH Voltage:</span>
+                      <span class="result-value">)rawliteral";
+  html += String((analogRead(PH_PIN) / 4095.0) * 3.3, 3);
+  html += R"rawliteral( V</span>
+                  </div>
+                  
+                  <div class="result-item">
+                      <span class="result-label">Raw TDS Voltage:</span>
+                      <span class="result-value">)rawliteral";
+  html += String((analogRead(TDS_PIN) / 4095.0) * 3.3, 3);
+  html += R"rawliteral( V</span>
+                  </div>
+              </div>
+              
+              <div class="flavour-result">
+                  <div class="flavour-label">Detected Flavour</div>
+                  <div class="flavour-value">)rawliteral";
+  html += flavour;
+  html += R"rawliteral(</div>
+              </div>
+              
+              <div class="action-buttons">
+                  <a href="/" class="btn btn-primary">📊 Dashboard</a>
+                  <a href="/test" class="btn btn-secondary">🔄 Test Again</a>
+              </div>
+              
+              <div class="test-timestamp">
+                  Test performed at: )rawliteral";
+  
+  // Add timestamp
+  unsigned long currentTime = millis();
+  unsigned long seconds = currentTime / 1000;
+  unsigned long minutes = seconds / 60;
+  unsigned long hours = minutes / 60;
+  html += String(hours % 24) + ":" + String(minutes % 60) + ":" + String(seconds % 60);
+  
+  html += R"rawliteral(
+              </div>
+          </div>
+      </div>
+  </body>
+  </html>
+  )rawliteral";
+
+  server.send(200, "text/html", html);
+}
+
+// =========================================================
+void handleSave() {
+  if (server.hasArg("ph") && server.hasArg("tds")) {
+    PH_CALIBRATION = server.arg("ph").toFloat();
+    TDS_FACTOR = server.arg("tds").toFloat();
+
+    EEPROM.put(ADDR_PH_CAL, PH_CALIBRATION);
+    EEPROM.put(ADDR_TDS_CAL, TDS_FACTOR);
+    EEPROM.commit();
+
+    String html = R"rawliteral(
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Calibration Saved</title>
+        <style>
+            body {
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                min-height: 100vh;
+                margin: 0;
+            }
+            .message {
+                background: white;
+                padding: 40px;
+                border-radius: 20px;
+                box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+                text-align: center;
+            }
+            .success {
+                color: #4CAF50;
+                font-size: 3em;
+                margin-bottom: 20px;
+            }
+            .btn {
+                display: inline-block;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                padding: 12px 24px;
+                text-decoration: none;
+                border-radius: 10px;
+                margin-top: 20px;
+                transition: transform 0.3s ease;
+            }
+            .btn:hover {
+                transform: translateY(-2px);
+            }
+        </style>
+    </head>
+    <body>
+        <div class="message">
+            <div class="success">✅</div>
+            <h2>Calibration Saved Successfully!</h2>
+            <p>New settings have been stored in EEPROM.</p>
+            <a href="/" class="btn">Return to Dashboard</a>
         </div>
-      </div>
-
-      <div class="card" style="margin-top:12px;">
-        <h3 style="margin:0 0 8px 0;">Recent logs (latest first)</h3>
-        <div style="max-height:320px; overflow:auto;">
-          <table>
-            <thead>
-              <tr><th>Time</th><th>Temp(DHT)</th><th>Hum</th><th>Temp(BMP)</th><th>Pres</th><th>Gas</th><th>LDR</th><th>Rain</th></tr>
-            </thead>
-            <tbody id="log-table-body">
-              <tr><td colspan="8" class="small">Waiting for data…</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div class="card" style="margin-top:12px;">
-        <h3 style="margin:0 0 8px 0;">Trends (last ~50 samples)</h3>
-        <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:8px;">
-          <div class="card"><canvas id="chart-temp"></canvas></div>
-          <div class="card"><canvas id="chart-hum"></canvas></div>
-          <div class="card"><canvas id="chart-pres"></canvas></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Right: side panel -->
-    <aside>
-      <div class="card">
-        <h3 style="margin-top:0">Connection</h3>
-        <div class="small">Firebase URL</div>
-        <div id="fb-url" class="small" style="word-break:break-all; margin-bottom:8px;"></div>
-        <div class="small">Realtime status: <span id="status" style="font-weight:700">—</span></div>
-      </div>
-
-      <div class="card" style="margin-top:12px;">
-        <h3 style="margin-top:0">Quick Info</h3>
-        <div class="small">How to use</div>
-        <ol style="padding-left:16px; margin-top:6px;">
-          <li>Push data to `/esp32_data_log/` from ESP32.</li>
-          <li>This page reads the newest items and updates live.</li>
-          <li>To deploy: create a GitHub repo and enable Pages for the `main` branch.</li>
-        </ol>
-      </div>
-    </aside>
-  </div>
-
-  <footer>
-    <div>Made for your ESP32 — <span class="small">live-read from Firebase Realtime DB</span></div>
-  </footer>
-
-  <!-- Firebase module SDK; uses your config (replace if needed) -->
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
-    import {
-      getDatabase,
-      ref,
-      query,
-      orderByKey,
-      limitToLast,
-      onValue,
-      get
-    } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
-
-    // ---------- PASTE YOUR FIREBASE CONFIG BELOW ----------
-    const firebaseConfig = {
-      apiKey: "AIzaSyCcFVfrAO-EOEqQcs3oZtJVLTgpF32uyb4",
-      authDomain: "air-quality-e5e71.firebaseapp.com",
-      databaseURL: "https://air-quality-e5e71-default-rtdb.asia-southeast1.firebasedatabase.app",
-      projectId: "air-quality-e5e71",
-      storageBucket: "air-quality-e5e71.firebasestorage.app",
-      messagingSenderId: "833458600295",
-      appId: "1:833458600295:web:99a1c59c0e3f612c73d7c2"
-    };
-    // -----------------------------------------------------
-
-    const app = initializeApp(firebaseConfig);
-    const db = getDatabase(app);
-
-    // UI elements
-    const fbUrlEl = document.getElementById('fb-url');
-    const statusEl = document.getElementById('status');
-    const entryCountEl = document.getElementById('entry-count');
-    const latestTimeEl = document.getElementById('latest-time');
-    const tempDhtEl = document.getElementById('temp-dht');
-    const humEl = document.getElementById('hum');
-    const presEl = document.getElementById('pres');
-    const logBody = document.getElementById('log-table-body');
-
-    fbUrlEl.textContent = firebaseConfig.databaseURL || '—';
-
-    // chart setups
-    const ctxT = document.getElementById('chart-temp').getContext('2d');
-    const ctxH = document.getElementById('chart-hum').getContext('2d');
-    const ctxP = document.getElementById('chart-pres').getContext('2d');
-
-    function emptyDataset() {
-      return { labels: [], datasets: [{ label:'value', data: [], tension:0.2, pointRadius:0 }] };
-    }
-    const chartTemp = new Chart(ctxT, { type:'line', data: emptyDataset(), options:{ plugins:{legend:{display:false}}, scales:{x:{display:false}} }});
-    const chartHum  = new Chart(ctxH,  { type:'line', data: emptyDataset(), options:{ plugins:{legend:{display:false}}, scales:{x:{display:false}} }});
-    const chartPres = new Chart(ctxP, { type:'line', data: emptyDataset(), options:{ plugins:{legend:{display:false}}, scales:{x:{display:false}} }});
-
-    // helper: convert numeric string key (timestamp ms) to readable time
-    function timeFromKey(k) {
-      let n = Number(k);
-      if (!isFinite(n)) return k;
-      const d = new Date(n);
-      return d.toLocaleString();
-    }
-
-    // Keep small rolling arrays
-    const MAX_POINTS = 50;
-    function pushPoint(chart, label, value) {
-      chart.data.labels.push(label);
-      chart.data.datasets[0].data.push(value);
-      while (chart.data.labels.length > MAX_POINTS) chart.data.labels.shift();
-      while (chart.data.datasets[0].data.length > MAX_POINTS) chart.data.datasets[0].data.shift();
-      chart.update('none');
-    }
-
-    // Watch the last N entries under /esp32_data_log
-    const logRef = query(ref(db, '/esp32_data_log'), orderByKey(), limitToLast(100));
-    onValue(logRef, (snapshot) => {
-      const data = snapshot.val();
-      if (!data) {
-        statusEl.textContent = 'No data';
-        return;
-      }
-      statusEl.textContent = 'Connected';
-      // Convert object of keys -> values into array sorted by key (ascending)
-      const entries = Object.keys(data).map(k => ({ key:k, v:data[k] })).sort((a,b)=>Number(a.key)-Number(b.key));
-      entryCountEl.textContent = entries.length;
-
-      // Clear table body and charts
-      logBody.innerHTML = '';
-      // reset charts
-      chartTemp.data.labels = []; chartTemp.data.datasets[0].data = [];
-      chartHum.data.labels = []; chartHum.data.datasets[0].data = [];
-      chartPres.data.labels = []; chartPres.data.datasets[0].data = [];
-
-      // iterate and build rows (we will display newest first)
-      for (let i = entries.length - 1; i >= 0; i--) {
-        const e = entries[i];
-        const val = e.v || {};
-        const ts = val.timestamp_ms ? Number(val.timestamp_ms) : Number(e.key) || Date.now();
-        const tr = document.createElement('tr');
-
-        const ttime = new Date(ts).toLocaleString();
-        const tdTime = `<td class="small">${ttime}</td>`;
-        const tdTempD = `<td>${val.temperature_dht ?? '—'}</td>`;
-        const tdHum   = `<td>${val.humidity ?? '—'}</td>`;
-        const tdTempB = `<td>${val.temperature_bmp ?? '—'}</td>`;
-        const tdPres  = `<td>${val.pressure ?? '—'}</td>`;
-        const tdGas   = `<td>${val.mq_sensor ?? '—'}</td>`;
-        const tdLdr   = `<td>${val.ldr_value ?? '—'}</td>`;
-        const tdRain  = `<td>${val.rain_value ?? '—'}</td>`;
-
-        tr.innerHTML = tdTime + tdTempD + tdHum + tdTempB + tdPres + tdGas + tdLdr + tdRain;
-        logBody.appendChild(tr);
-      }
-
-      // latest entry = last element in entries
-      const latest = entries[entries.length - 1].v;
-      latestTimeEl.textContent = timeFromKey(entries[entries.length - 1].key);
-      tempDhtEl.textContent = (latest.temperature_dht !== undefined) ? `${latest.temperature_dht} °C` : '— °C';
-      humEl.textContent = (latest.humidity !== undefined) ? `${latest.humidity} %` : '— %';
-      presEl.textContent = (latest.pressure !== undefined) ? `${latest.pressure} hPa` : '— hPa';
-
-      // Fill charts with ascending order
-      for (let i = 0; i < entries.length; i++) {
-        const e = entries[i];
-        const val = e.v || {};
-        const ts = e.key;
-        const label = new Date(Number(ts)).toLocaleTimeString();
-        if (val.temperature_dht !== undefined) pushPoint(chartTemp, label, Number(val.temperature_dht));
-        if (val.humidity !== undefined) pushPoint(chartHum, label, Number(val.humidity));
-        if (val.pressure !== undefined) pushPoint(chartPres, label, Number(val.pressure));
-      }
-    }, (err) => {
-      statusEl.textContent = 'Error: ' + err;
-    });
-
-    // Optional: fetch once quickly to show immediate status
-    (async () => {
-      try {
-        const snap = await get(ref(db, '/esp32_data_log'));
-        if (!snap.exists()) {
-          statusEl.textContent = 'No data yet';
-        }
-      } catch(e) {
-        statusEl.textContent = 'Fetch error';
-      }
-    })();
-  </script>
-</body>
-</html>
+    </body>
+    </html>
+    )rawliteral";
+    
+    server.send(200, "text/html", html);
+    Serial.println("Calibration updated and saved to EEPROM!");
+  } else {
+    server.send(400, "text/plain", "Missing parameters!");
+  }
+}
