@@ -575,6 +575,24 @@
     .light-glow.active {
       opacity: 1;
     }
+    
+    /* Live update indicator */
+    .live-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.75rem;
+      color: #10b981;
+      font-weight: 500;
+      animation: pulse 2s infinite;
+    }
+    
+    .live-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #10b981;
+    }
   </style>
   <!-- Chart.js (for charts) -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -598,7 +616,13 @@
         <div class="card">
           <div class="card-title">
             <span>Current Environmental Readings</span>
-            <div class="last-updated" id="latest-time">Last updated: —</div>
+            <div class="last-updated">
+              <span id="latest-time">Last updated: —</span>
+              <span class="live-indicator" id="live-indicator" style="display: none;">
+                <span class="live-dot"></span>
+                LIVE
+              </span>
+            </div>
           </div>
           
           <div class="stats-grid">
@@ -949,6 +973,7 @@
     const lastSyncEl = document.getElementById('last-sync');
     const entryCountEl = document.getElementById('entry-count');
     const latestTimeEl = document.getElementById('latest-time');
+    const liveIndicatorEl = document.getElementById('live-indicator');
     const tempDhtEl = document.getElementById('temp-dht');
     const humEl = document.getElementById('hum');
     const humStatusEl = document.getElementById('hum-status');
@@ -1004,9 +1029,11 @@
         statusIndicator.classList.add('connected');
         dbStatusEl.textContent = 'Connected';
         dbStatusEl.style.color = '#10b981';
+        liveIndicatorEl.style.display = 'inline-flex';
       } else {
         dbStatusEl.textContent = 'Disconnected';
         dbStatusEl.style.color = '#ef4444';
+        liveIndicatorEl.style.display = 'none';
       }
     }
 
@@ -1398,13 +1425,18 @@
     const logRef = query(ref(db, '/esp32_data_log'), orderByKey(), limitToLast(100));
     onValue(logRef, (snapshot) => {
       const data = snapshot.val();
+      
+      // Update sync time to current time
+      const currentTime = new Date();
+      lastSyncEl.textContent = currentTime.toLocaleTimeString();
+      latestTimeEl.textContent = `Last updated: ${currentTime.toLocaleTimeString()}`;
+      
       if (!data) {
         updateStatus('No data available', false);
         return;
       }
       
       updateStatus('Live updating', true);
-      lastSyncEl.textContent = new Date().toLocaleTimeString();
       
       // Convert object of keys -> values into array sorted by key (ascending)
       const entries = Object.keys(data).map(k => ({ key:k, v:data[k] })).sort((a,b)=>Number(a.key)-Number(b.key));
@@ -1448,8 +1480,6 @@
       // latest entry = last element in entries
       const latestRaw = entries[entries.length - 1].v;
       const latest = convertSensorValues(latestRaw);
-      const latestTime = new Date(Number(entries[entries.length - 1].key));
-      latestTimeEl.textContent = `Last updated: ${latestTime.toLocaleTimeString()}`;
       
       // Update current readings
       tempDhtEl.textContent = (latestRaw.temperature_dht !== undefined) ? latestRaw.temperature_dht : '—';
