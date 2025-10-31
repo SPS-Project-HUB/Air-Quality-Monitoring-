@@ -1,0 +1,137 @@
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <Adafruit_BMP085.h>
+#include "DHT.h"
+
+// ==== WiFi Credentials ====
+const char* ssid = "iPhone";
+const char* password = "murugaraj6385479706";
+
+// ==== Firebase Configuration ====
+const char* firebaseHost = "https://air-quality-e5e71-default-rtdb.asia-southeast1.firebasedatabase.app";
+const char* firebaseSecret = "jHm4xZT7CbBBVcOcNZsV0Yg2PzohStBOmxDi98aR";
+
+// ==== Sensor Pins ====
+#define DHTPIN 4
+#define DHTTYPE DHT11
+#define MQ_PIN 34
+#define LDR_PIN 35
+#define RAIN_PIN 32
+
+// ==== Objects ====
+DHT dht(DHTPIN, DHTTYPE);
+Adafruit_BMP085 bmp;
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+// ==== WiFi Connect ====
+void connectWiFi() {
+  WiFi.begin(ssid, password);
+  lcd.setCursor(0, 0);
+  lcd.print("WiFi Connecting");
+  int retry = 0;
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    lcd.print(".");
+    retry++;
+    if (retry > 30) {
+      lcd.clear();
+      lcd.print("WiFi Failed!");
+      return;
+    }
+  }
+  lcd.clear();
+  lcd.print("WiFi Connected");
+  delay(1000);
+  lcd.clear();
+}
+
+// ==== Send to Firebase (push log) ====
+void sendToFirebase(float temp_dht, float hum, float temp_bmp, float pressure,
+                    int mq, int ldr, int rain) {
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+
+    // unique timestamp key for each entry
+    String timestamp = String(millis());
+    String url = String(firebaseHost) + "/esp32_data_log/" + timestamp + ".json?auth=" + firebaseSecret;
+
+    http.begin(url);
+    http.addHeader("Content-Type", "application/json");
+
+    String jsonData = "{";
+    jsonData += "\"temperature_dht\":" + String(temp_dht, 2) + ",";
+    jsonData += "\"humidity\":" + String(hum, 2) + ",";
+    jsonData += "\"temperature_bmp\":" + String(temp_bmp, 2) + ",";
+    jsonData += "\"pressure\":" + String(pressure, 2) + ",";
+    jsonData += "\"mq_sensor\":" + String(mq) + ",";
+    jsonData += "\"ldr_value\":" + String(ldr) + ",";
+    jsonData += "\"rain_value\":" + String(rain) + ",";
+    jsonData += "\"timestamp_ms\":" + timestamp;
+    jsonData += "}";
+
+    int httpResponseCode = http.PUT(jsonData);
+    Serial.printf("Firebase response: %d\n", httpResponseCode);
+    http.end();
+  }
+}
+
+// ==== Setup ====
+void setup() {
+  Serial.begin(115200);
+  Wire.begin(21, 22);
+  lcd.init();
+  lcd.backlight();
+  dht.begin();
+
+  lcd.setCursor(0, 0);
+  lcd.print("BMP180 Init...");
+  if (!bmp.begin()) {
+    lcd.clear();
+    lcd.print("BMP Error!");
+    while (1);
+  }
+
+  connectWiFi();
+  lcd.clear();
+  lcd.print("System Ready");
+  delay(1000);
+  lcd.clear();
+}
+
+// ==== Loop ====
+void loop() {
+  float temp_dht = dht.readTemperature();
+  float hum = dht.readHumidity();
+  float temp_bmp = bmp.readTemperature();
+  float pressure = bmp.readPressure() / 100.0;
+  int mq = analogRead(MQ_PIN);
+  int ldr = analogRead(LDR_PIN);
+  int rain = analogRead(RAIN_PIN);
+
+  // Display on LCD
+  lcd.setCursor(0, 0);
+  lcd.print("T:");
+  lcd.print(temp_dht, 1);
+  lcd.print((char)223);
+  lcd.print("C H:");
+  lcd.print(hum, 0);
+
+  lcd.setCursor(0, 1);
+  lcd.print("L:");
+  lcd.print(ldr);
+  lcd.print(" R:");
+  lcd.print(rain);
+
+  // Serial log
+  Serial.println("---- Sensor Data ----");
+  Serial.printf("DHT Temp: %.2f°C | Humidity: %.2f%%\n", temp_dht, hum);
+  Serial.printf("BMP Temp: %.2f°C | Pressure: %.2f hPa\n", temp_bmp, pressure);
+  Serial.printf("MQ: %d | LDR: %d | Rain: %d\n", mq, ldr, rain);
+
+  // Upload to Firebase (stored with unique timestamp)
+  sendToFirebase(temp_dht, hum, temp_bmp, pressure, mq, ldr, rain);
+
+  delay(5000); // log every 5 seconds
+}
