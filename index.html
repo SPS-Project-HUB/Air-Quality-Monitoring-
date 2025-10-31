@@ -153,7 +153,19 @@
       border-left-color: #10b981;
     }
 
-    .stat-card.gas {
+    .stat-card.oxygen {
+      border-left-color: #3b82f6;
+    }
+
+    .stat-card.co2 {
+      border-left-color: #8b5cf6;
+    }
+
+    .stat-card.rain {
+      border-left-color: #0ea5e9;
+    }
+
+    .stat-card.light {
       border-left-color: #f59e0b;
     }
 
@@ -175,6 +187,30 @@
       font-size: 0.9rem;
       color: var(--text-light);
       font-weight: 500;
+    }
+
+    .stat-card .status {
+      font-size: 0.75rem;
+      margin-top: 4px;
+      padding: 2px 6px;
+      border-radius: 10px;
+      display: inline-block;
+      font-weight: 500;
+    }
+
+    .status-good {
+      background: #d1fae5;
+      color: #065f46;
+    }
+
+    .status-moderate {
+      background: #fef3c7;
+      color: #92400e;
+    }
+
+    .status-poor {
+      background: #fee2e2;
+      color: #991b1b;
     }
 
     table {
@@ -432,6 +468,39 @@
     .empty-state p {
       margin: 8px 0 0 0;
     }
+    
+    /* Gas levels indicator */
+    .gas-levels {
+      display: flex;
+      gap: 12px;
+      margin-top: 16px;
+    }
+    
+    .gas-level {
+      flex: 1;
+      text-align: center;
+      padding: 12px;
+      border-radius: 8px;
+      background: #f8fafc;
+    }
+    
+    .gas-level h4 {
+      margin: 0 0 6px 0;
+      font-size: 0.85rem;
+      color: var(--text-light);
+      font-weight: 500;
+    }
+    
+    .gas-level .value {
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin: 0;
+    }
+    
+    .gas-level .unit {
+      font-size: 0.8rem;
+      color: var(--text-light);
+    }
   </style>
   <!-- Chart.js (for charts) -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -441,7 +510,7 @@
     <header>
       <div class="header-left">
         <h1>ESP32 Air Quality Dashboard</h1>
-        <div class="subtitle">Real-time monitoring from Firebase Realtime Database</div>
+        <div class="subtitle">Real-time environmental monitoring from Firebase</div>
       </div>
       <div class="status-badge">
         <div class="status-indicator" id="status-indicator"></div>
@@ -454,7 +523,7 @@
       <div>
         <div class="card">
           <div class="card-title">
-            <span>Current Readings</span>
+            <span>Current Environmental Readings</span>
             <div class="last-updated" id="latest-time">Last updated: —</div>
           </div>
           
@@ -468,16 +537,36 @@
               <h3>Humidity</h3>
               <p class="value" id="hum">—</p>
               <span class="unit">%</span>
+              <div class="status" id="hum-status">—</div>
             </div>
             <div class="stat-card pressure">
               <h3>Pressure (BMP)</h3>
               <p class="value" id="pres">—</p>
               <span class="unit">hPa</span>
             </div>
-            <div class="stat-card gas">
-              <h3>Gas Level</h3>
-              <p class="value" id="gas">—</p>
+            <div class="stat-card oxygen">
+              <h3>Oxygen Level</h3>
+              <p class="value" id="oxygen">—</p>
+              <span class="unit">%</span>
+              <div class="status" id="oxygen-status">—</div>
+            </div>
+            <div class="stat-card co2">
+              <h3>CO₂ Level</h3>
+              <p class="value" id="co2">—</p>
               <span class="unit">ppm</span>
+              <div class="status" id="co2-status">—</div>
+            </div>
+            <div class="stat-card rain">
+              <h3>Rain Level</h3>
+              <p class="value" id="rain">—</p>
+              <span class="unit">%</span>
+              <div class="status" id="rain-status">—</div>
+            </div>
+            <div class="stat-card light">
+              <h3>Light Intensity</h3>
+              <p class="value" id="light">—</p>
+              <span class="unit">lux</span>
+              <div class="status" id="light-status">—</div>
             </div>
           </div>
         </div>
@@ -496,14 +585,15 @@
                   <th>Humidity</th>
                   <th>Temp (BMP)</th>
                   <th>Pressure</th>
-                  <th>Gas</th>
+                  <th>O₂</th>
+                  <th>CO₂</th>
                   <th>Light</th>
                   <th>Rain</th>
                 </tr>
               </thead>
               <tbody id="log-table-body">
                 <tr>
-                  <td colspan="8" class="empty-state">
+                  <td colspan="9" class="empty-state">
                     <div>No data available</div>
                     <p>Waiting for sensor readings...</p>
                   </td>
@@ -591,34 +681,34 @@
                 </div>
               </div>
               
-              <!-- Pressure Trend Card -->
+              <!-- CO₂ Trend Card -->
               <div class="trend-card">
                 <div class="trend-card-header">
-                  <h3 class="trend-card-title">Pressure</h3>
+                  <h3 class="trend-card-title">CO₂ Level</h3>
                   <div class="trend-card-value">
-                    <span id="current-pres">—</span>
-                    <span class="unit">hPa</span>
-                    <div class="trend-change" id="pres-change">
+                    <span id="current-co2">—</span>
+                    <span class="unit">ppm</span>
+                    <div class="trend-change" id="co2-change">
                       <span>→</span>
                       <span>0.0%</span>
                     </div>
                   </div>
                 </div>
                 <div class="trend-card-body">
-                  <canvas id="chart-pres"></canvas>
+                  <canvas id="chart-co2"></canvas>
                 </div>
                 <div class="trend-card-footer">
                   <div class="trend-minmax">
                     <div class="minmax-item">
                       <span class="minmax-label">Min:</span>
-                      <span id="pres-min">— hPa</span>
+                      <span id="co2-min">— ppm</span>
                     </div>
                     <div class="minmax-item">
                       <span class="minmax-label">Max:</span>
-                      <span id="pres-max">— hPa</span>
+                      <span id="co2-max">— ppm</span>
                     </div>
                   </div>
-                  <div>BMP Sensor</div>
+                  <div>MQ Sensor</div>
                 </div>
               </div>
             </div>
@@ -640,6 +730,32 @@
           <div style="display: flex; justify-content: space-between;">
             <span class="muted">Last Sync:</span>
             <span id="last-sync" style="font-weight: 600;">—</span>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top: 20px;">
+          <div class="card-title">Air Quality Status</div>
+          <div style="margin-bottom: 12px;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+              <span class="muted">Overall:</span>
+              <span id="air-quality-status" style="font-weight: 600;">—</span>
+            </div>
+            <div style="height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden;">
+              <div id="air-quality-bar" style="height: 100%; width: 0%; background: #10b981; transition: width 0.5s;"></div>
+            </div>
+          </div>
+          
+          <div class="gas-levels">
+            <div class="gas-level" style="background: #dbeafe;">
+              <h4>O₂ Level</h4>
+              <p class="value" id="side-oxygen">—</p>
+              <span class="unit">%</span>
+            </div>
+            <div class="gas-level" style="background: #ede9fe;">
+              <h4>CO₂ Level</h4>
+              <p class="value" id="side-co2">—</p>
+              <span class="unit">ppm</span>
+            </div>
           </div>
         </div>
 
@@ -670,15 +786,15 @@
             </div>
             <div>
               <div class="muted">BMP Sensor</div>
-              <div style="font-weight: 600;">Pressure & Temp</div>
+              <div style="font-weight: 600;">Pressure</div>
             </div>
             <div>
               <div class="muted">MQ Sensor</div>
-              <div style="font-weight: 600;">Gas Quality</div>
+              <div style="font-weight: 600;">Gas Levels</div>
             </div>
             <div>
               <div class="muted">LDR</div>
-              <div style="font-weight: 600;">Light Level</div>
+              <div style="font-weight: 600;">Light Intensity</div>
             </div>
           </div>
         </div>
@@ -728,23 +844,37 @@
     const latestTimeEl = document.getElementById('latest-time');
     const tempDhtEl = document.getElementById('temp-dht');
     const humEl = document.getElementById('hum');
+    const humStatusEl = document.getElementById('hum-status');
     const presEl = document.getElementById('pres');
-    const gasEl = document.getElementById('gas');
+    const oxygenEl = document.getElementById('oxygen');
+    const oxygenStatusEl = document.getElementById('oxygen-status');
+    const co2El = document.getElementById('co2');
+    const co2StatusEl = document.getElementById('co2-status');
+    const rainEl = document.getElementById('rain');
+    const rainStatusEl = document.getElementById('rain-status');
+    const lightEl = document.getElementById('light');
+    const lightStatusEl = document.getElementById('light-status');
     const logBody = document.getElementById('log-table-body');
+    
+    // Air quality elements
+    const airQualityStatusEl = document.getElementById('air-quality-status');
+    const airQualityBarEl = document.getElementById('air-quality-bar');
+    const sideOxygenEl = document.getElementById('side-oxygen');
+    const sideCo2El = document.getElementById('side-co2');
     
     // New trend elements
     const currentTempEl = document.getElementById('current-temp');
     const currentHumEl = document.getElementById('current-hum');
-    const currentPresEl = document.getElementById('current-pres');
+    const currentCo2El = document.getElementById('current-co2');
     const tempChangeEl = document.getElementById('temp-change');
     const humChangeEl = document.getElementById('hum-change');
-    const presChangeEl = document.getElementById('pres-change');
+    const co2ChangeEl = document.getElementById('co2-change');
     const tempMinEl = document.getElementById('temp-min');
     const tempMaxEl = document.getElementById('temp-max');
     const humMinEl = document.getElementById('hum-min');
     const humMaxEl = document.getElementById('hum-max');
-    const presMinEl = document.getElementById('pres-min');
-    const presMaxEl = document.getElementById('pres-max');
+    const co2MinEl = document.getElementById('co2-min');
+    const co2MaxEl = document.getElementById('co2-max');
 
     fbUrlEl.textContent = firebaseConfig.databaseURL || '—';
 
@@ -773,7 +903,7 @@
     // chart setups
     const ctxT = document.getElementById('chart-temp').getContext('2d');
     const ctxH = document.getElementById('chart-hum').getContext('2d');
-    const ctxP = document.getElementById('chart-pres').getContext('2d');
+    const ctxC = document.getElementById('chart-co2').getContext('2d');
 
     function createChartConfig(ctx, color, label) {
       return {
@@ -848,7 +978,7 @@
 
     const chartTemp = new Chart(ctxT, createChartConfig(ctxT, '#ef4444', 'Temperature'));
     const chartHum = new Chart(ctxH, createChartConfig(ctxH, '#3b82f6', 'Humidity'));
-    const chartPres = new Chart(ctxP, createChartConfig(ctxP, '#10b981', 'Pressure'));
+    const chartCo2 = new Chart(ctxC, createChartConfig(ctxC, '#8b5cf6', 'CO₂'));
 
     // helper: convert numeric string key (timestamp ms) to readable time
     function timeFromKey(k) {
@@ -882,7 +1012,7 @@
     }
 
     // Update trend indicators
-    function updateTrendIndicators(tempData, humData, presData) {
+    function updateTrendIndicators(tempData, humData, co2Data) {
       // Temperature trend
       const tempChange = calculateChange(tempData);
       updateTrendElement(tempChangeEl, tempChange);
@@ -891,9 +1021,9 @@
       const humChange = calculateChange(humData);
       updateTrendElement(humChangeEl, humChange);
       
-      // Pressure trend
-      const presChange = calculateChange(presData);
-      updateTrendElement(presChangeEl, presChange);
+      // CO2 trend
+      const co2Change = calculateChange(co2Data);
+      updateTrendElement(co2ChangeEl, co2Change);
     }
     
     function updateTrendElement(element, change) {
@@ -919,7 +1049,7 @@
     }
     
     // Update min/max values
-    function updateMinMax(tempData, humData, presData) {
+    function updateMinMax(tempData, humData, co2Data) {
       if (tempData.length > 0) {
         const minTemp = Math.min(...tempData).toFixed(1);
         const maxTemp = Math.max(...tempData).toFixed(1);
@@ -934,11 +1064,169 @@
         humMaxEl.textContent = `${maxHum} %`;
       }
       
-      if (presData.length > 0) {
-        const minPres = Math.min(...presData).toFixed(1);
-        const maxPres = Math.max(...presData).toFixed(1);
-        presMinEl.textContent = `${minPres} hPa`;
-        presMaxEl.textContent = `${maxPres} hPa`;
+      if (co2Data.length > 0) {
+        const minCo2 = Math.min(...co2Data).toFixed(0);
+        const maxCo2 = Math.max(...co2Data).toFixed(0);
+        co2MinEl.textContent = `${minCo2} ppm`;
+        co2MaxEl.textContent = `${maxCo2} ppm`;
+      }
+    }
+
+    // Convert raw sensor values to meaningful units
+    function convertSensorValues(rawData) {
+      const converted = { ...rawData };
+      
+      // Convert gas sensor reading to O₂ and CO₂ levels
+      // Assuming MQ sensor value is between 0-1023
+      if (rawData.mq_sensor !== undefined) {
+        // Convert to CO₂ ppm (this is a simplified conversion)
+        // In a real application, you would use the sensor's datasheet
+        const mqValue = Number(rawData.mq_sensor);
+        converted.co2 = Math.round(400 + (mqValue / 1023) * 2000); // 400-2400 ppm range
+        converted.oxygen = (20.9 - (mqValue / 1023) * 5).toFixed(1); // 15.9-20.9% range
+      }
+      
+      // Convert rain sensor to percentage
+      if (rawData.rain_value !== undefined) {
+        const rainValue = Number(rawData.rain_value);
+        // Assuming rain sensor gives 0 when dry and higher values when wet
+        converted.rain_percent = Math.round((rainValue / 1023) * 100);
+      }
+      
+      // Convert LDR to light intensity in lux
+      if (rawData.ldr_value !== undefined) {
+        const ldrValue = Number(rawData.ldr_value);
+        // Simplified conversion from LDR reading to lux
+        // This would need calibration for accurate readings
+        converted.light_lux = Math.round(Math.pow(10, (ldrValue / 1023) * 4) * 10); // 10-10000 lux range
+      }
+      
+      return converted;
+    }
+    
+    // Update status indicators based on values
+    function updateStatusIndicators(data) {
+      // Humidity status
+      if (data.humidity !== undefined) {
+        const humidity = Number(data.humidity);
+        if (humidity >= 40 && humidity <= 60) {
+          humStatusEl.textContent = 'Ideal';
+          humStatusEl.className = 'status status-good';
+        } else if (humidity >= 30 && humidity <= 70) {
+          humStatusEl.textContent = 'Moderate';
+          humStatusEl.className = 'status status-moderate';
+        } else {
+          humStatusEl.textContent = 'Poor';
+          humStatusEl.className = 'status status-poor';
+        }
+      }
+      
+      // Oxygen status
+      if (data.oxygen !== undefined) {
+        const oxygen = Number(data.oxygen);
+        if (oxygen >= 19.5) {
+          oxygenStatusEl.textContent = 'Good';
+          oxygenStatusEl.className = 'status status-good';
+        } else if (oxygen >= 19.0) {
+          oxygenStatusEl.textContent = 'Moderate';
+          oxygenStatusEl.className = 'status status-moderate';
+        } else {
+          oxygenStatusEl.textContent = 'Poor';
+          oxygenStatusEl.className = 'status status-poor';
+        }
+      }
+      
+      // CO2 status
+      if (data.co2 !== undefined) {
+        const co2 = Number(data.co2);
+        if (co2 <= 800) {
+          co2StatusEl.textContent = 'Good';
+          co2StatusEl.className = 'status status-good';
+        } else if (co2 <= 1200) {
+          co2StatusEl.textContent = 'Moderate';
+          co2StatusEl.className = 'status status-moderate';
+        } else {
+          co2StatusEl.textContent = 'Poor';
+          co2StatusEl.className = 'status status-poor';
+        }
+      }
+      
+      // Rain status
+      if (data.rain_percent !== undefined) {
+        const rain = Number(data.rain_percent);
+        if (rain < 10) {
+          rainStatusEl.textContent = 'Dry';
+          rainStatusEl.className = 'status status-good';
+        } else if (rain < 50) {
+          rainStatusEl.textContent = 'Light';
+          rainStatusEl.className = 'status status-moderate';
+        } else {
+          rainStatusEl.textContent = 'Heavy';
+          rainStatusEl.className = 'status status-poor';
+        }
+      }
+      
+      // Light status
+      if (data.light_lux !== undefined) {
+        const light = Number(data.light_lux);
+        if (light >= 300 && light <= 750) {
+          lightStatusEl.textContent = 'Ideal';
+          lightStatusEl.className = 'status status-good';
+        } else if (light >= 100 && light <= 1000) {
+          lightStatusEl.textContent = 'Moderate';
+          lightStatusEl.className = 'status status-moderate';
+        } else {
+          lightStatusEl.textContent = 'Poor';
+          lightStatusEl.className = 'status status-poor';
+        }
+      }
+      
+      // Update overall air quality
+      updateAirQuality(data);
+    }
+    
+    // Calculate overall air quality
+    function updateAirQuality(data) {
+      let score = 100; // Start with perfect score
+      
+      // Deduct points based on conditions
+      if (data.co2 !== undefined) {
+        const co2 = Number(data.co2);
+        if (co2 > 1200) score -= 30;
+        else if (co2 > 800) score -= 15;
+      }
+      
+      if (data.oxygen !== undefined) {
+        const oxygen = Number(data.oxygen);
+        if (oxygen < 19.0) score -= 30;
+        else if (oxygen < 19.5) score -= 15;
+      }
+      
+      if (data.humidity !== undefined) {
+        const humidity = Number(data.humidity);
+        if (humidity < 30 || humidity > 70) score -= 10;
+        else if (humidity < 40 || humidity > 60) score -= 5;
+      }
+      
+      // Ensure score doesn't go below 0
+      score = Math.max(0, score);
+      
+      // Update air quality bar
+      airQualityBarEl.style.width = `${score}%`;
+      
+      // Update air quality status text
+      if (score >= 80) {
+        airQualityStatusEl.textContent = 'Excellent';
+        airQualityBarEl.style.background = '#10b981';
+      } else if (score >= 60) {
+        airQualityStatusEl.textContent = 'Good';
+        airQualityBarEl.style.background = '#3b82f6';
+      } else if (score >= 40) {
+        airQualityStatusEl.textContent = 'Moderate';
+        airQualityBarEl.style.background = '#f59e0b';
+      } else {
+        airQualityStatusEl.textContent = 'Poor';
+        airQualityBarEl.style.background = '#ef4444';
       }
     }
 
@@ -963,78 +1251,93 @@
       // reset charts
       chartTemp.data.labels = []; chartTemp.data.datasets[0].data = [];
       chartHum.data.labels = []; chartHum.data.datasets[0].data = [];
-      chartPres.data.labels = []; chartPres.data.datasets[0].data = [];
+      chartCo2.data.labels = []; chartCo2.data.datasets[0].data = [];
 
       // Arrays to store values for trend calculations
       const tempValues = [];
       const humValues = [];
-      const presValues = [];
+      const co2Values = [];
 
       // iterate and build rows (we will display newest first)
       for (let i = entries.length - 1; i >= 0; i--) {
         const e = entries[i];
-        const val = e.v || {};
-        const ts = val.timestamp_ms ? Number(val.timestamp_ms) : Number(e.key) || Date.now();
+        const rawData = e.v || {};
+        const convertedData = convertSensorValues(rawData);
+        const ts = rawData.timestamp_ms ? Number(rawData.timestamp_ms) : Number(e.key) || Date.now();
         const tr = document.createElement('tr');
 
         const ttime = new Date(ts).toLocaleTimeString();
         const tdTime = `<td class="small">${ttime}</td>`;
-        const tdTempD = `<td>${val.temperature_dht ?? '—'}</td>`;
-        const tdHum   = `<td>${val.humidity ?? '—'}</td>`;
-        const tdTempB = `<td>${val.temperature_bmp ?? '—'}</td>`;
-        const tdPres  = `<td>${val.pressure ?? '—'}</td>`;
-        const tdGas   = `<td>${val.mq_sensor ?? '—'}</td>`;
-        const tdLdr   = `<td>${val.ldr_value ?? '—'}</td>`;
-        const tdRain  = `<td>${val.rain_value ?? '—'}</td>`;
+        const tdTempD = `<td>${rawData.temperature_dht ?? '—'}</td>`;
+        const tdHum   = `<td>${rawData.humidity ?? '—'}</td>`;
+        const tdTempB = `<td>${rawData.temperature_bmp ?? '—'}</td>`;
+        const tdPres  = `<td>${rawData.pressure ?? '—'}</td>`;
+        const tdO2    = `<td>${convertedData.oxygen ?? '—'}</td>`;
+        const tdCO2   = `<td>${convertedData.co2 ?? '—'}</td>`;
+        const tdLight = `<td>${convertedData.light_lux ?? '—'}</td>`;
+        const tdRain  = `<td>${convertedData.rain_percent ?? '—'}</td>`;
 
-        tr.innerHTML = tdTime + tdTempD + tdHum + tdTempB + tdPres + tdGas + tdLdr + tdRain;
+        tr.innerHTML = tdTime + tdTempD + tdHum + tdTempB + tdPres + tdO2 + tdCO2 + tdLight + tdRain;
         logBody.appendChild(tr);
       }
 
       // latest entry = last element in entries
-      const latest = entries[entries.length - 1].v;
+      const latestRaw = entries[entries.length - 1].v;
+      const latest = convertSensorValues(latestRaw);
       const latestTime = new Date(Number(entries[entries.length - 1].key));
       latestTimeEl.textContent = `Last updated: ${latestTime.toLocaleTimeString()}`;
       
-      tempDhtEl.textContent = (latest.temperature_dht !== undefined) ? latest.temperature_dht : '—';
-      humEl.textContent = (latest.humidity !== undefined) ? latest.humidity : '—';
-      presEl.textContent = (latest.pressure !== undefined) ? latest.pressure : '—';
-      gasEl.textContent = (latest.mq_sensor !== undefined) ? latest.mq_sensor : '—';
+      // Update current readings
+      tempDhtEl.textContent = (latestRaw.temperature_dht !== undefined) ? latestRaw.temperature_dht : '—';
+      humEl.textContent = (latestRaw.humidity !== undefined) ? latestRaw.humidity : '—';
+      presEl.textContent = (latestRaw.pressure !== undefined) ? latestRaw.pressure : '—';
+      oxygenEl.textContent = (latest.oxygen !== undefined) ? latest.oxygen : '—';
+      co2El.textContent = (latest.co2 !== undefined) ? latest.co2 : '—';
+      rainEl.textContent = (latest.rain_percent !== undefined) ? latest.rain_percent : '—';
+      lightEl.textContent = (latest.light_lux !== undefined) ? latest.light_lux : '—';
+      
+      // Update side panel values
+      sideOxygenEl.textContent = (latest.oxygen !== undefined) ? latest.oxygen : '—';
+      sideCo2El.textContent = (latest.co2 !== undefined) ? latest.co2 : '—';
       
       // Update current values in trend cards
-      currentTempEl.textContent = (latest.temperature_dht !== undefined) ? latest.temperature_dht : '—';
-      currentHumEl.textContent = (latest.humidity !== undefined) ? latest.humidity : '—';
-      currentPresEl.textContent = (latest.pressure !== undefined) ? latest.pressure : '—';
+      currentTempEl.textContent = (latestRaw.temperature_dht !== undefined) ? latestRaw.temperature_dht : '—';
+      currentHumEl.textContent = (latestRaw.humidity !== undefined) ? latestRaw.humidity : '—';
+      currentCo2El.textContent = (latest.co2 !== undefined) ? latest.co2 : '—';
+      
+      // Update status indicators
+      updateStatusIndicators(latest);
 
       // Fill charts with ascending order and collect values
       for (let i = 0; i < entries.length; i++) {
         const e = entries[i];
-        const val = e.v || {};
+        const rawData = e.v || {};
+        const convertedData = convertSensorValues(rawData);
         const ts = e.key;
         const label = formatTimeShort(Number(ts));
         
-        if (val.temperature_dht !== undefined) {
-          const tempVal = Number(val.temperature_dht);
+        if (rawData.temperature_dht !== undefined) {
+          const tempVal = Number(rawData.temperature_dht);
           pushPoint(chartTemp, label, tempVal);
           tempValues.push(tempVal);
         }
         
-        if (val.humidity !== undefined) {
-          const humVal = Number(val.humidity);
+        if (rawData.humidity !== undefined) {
+          const humVal = Number(rawData.humidity);
           pushPoint(chartHum, label, humVal);
           humValues.push(humVal);
         }
         
-        if (val.pressure !== undefined) {
-          const presVal = Number(val.pressure);
-          pushPoint(chartPres, label, presVal);
-          presValues.push(presVal);
+        if (convertedData.co2 !== undefined) {
+          const co2Val = Number(convertedData.co2);
+          pushPoint(chartCo2, label, co2Val);
+          co2Values.push(co2Val);
         }
       }
       
       // Update trend indicators and min/max values
-      updateTrendIndicators(tempValues, humValues, presValues);
-      updateMinMax(tempValues, humValues, presValues);
+      updateTrendIndicators(tempValues, humValues, co2Values);
+      updateMinMax(tempValues, humValues, co2Values);
     }, (err) => {
       updateStatus('Connection error', false);
       console.error('Firebase error:', err);
