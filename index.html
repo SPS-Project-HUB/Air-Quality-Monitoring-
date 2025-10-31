@@ -501,6 +501,80 @@
       font-size: 0.8rem;
       color: var(--text-light);
     }
+    
+    /* Rain indicator specific styles */
+    .rain-indicator {
+      height: 8px;
+      background: #e2e8f0;
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: 8px;
+      position: relative;
+    }
+    
+    .rain-fill {
+      height: 100%;
+      background: #0ea5e9;
+      transition: width 0.5s;
+    }
+    
+    .rain-drops {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-image: 
+        radial-gradient(circle at 10% 20%, rgba(14, 165, 233, 0.3) 1px, transparent 1px),
+        radial-gradient(circle at 30% 60%, rgba(14, 165, 233, 0.3) 1px, transparent 1px),
+        radial-gradient(circle at 50% 40%, rgba(14, 165, 233, 0.3) 1px, transparent 1px),
+        radial-gradient(circle at 70% 20%, rgba(14, 165, 233, 0.3) 1px, transparent 1px),
+        radial-gradient(circle at 90% 60%, rgba(14, 165, 233, 0.3) 1px, transparent 1px);
+      background-size: 20% 100%;
+      opacity: 0;
+      transition: opacity 0.5s;
+    }
+    
+    .rain-drops.active {
+      opacity: 1;
+      animation: rainAnimation 1s linear infinite;
+    }
+    
+    @keyframes rainAnimation {
+      0% { background-position: 0% 0%, 0% 0%, 0% 0%, 0% 0%, 0% 0%; }
+      100% { background-position: 0% 100%, 0% 100%, 0% 100%, 0% 100%, 0% 100%; }
+    }
+    
+    /* Light indicator specific styles */
+    .light-indicator {
+      height: 8px;
+      background: #e2e8f0;
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: 8px;
+      position: relative;
+    }
+    
+    .light-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #f59e0b, #fcd34d);
+      transition: width 0.5s;
+    }
+    
+    .light-glow {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(circle at center, rgba(245, 158, 11, 0.3) 0%, transparent 70%);
+      opacity: 0;
+      transition: opacity 0.5s;
+    }
+    
+    .light-glow.active {
+      opacity: 1;
+    }
   </style>
   <!-- Chart.js (for charts) -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -557,16 +631,24 @@
               <div class="status" id="co2-status">—</div>
             </div>
             <div class="stat-card rain">
-              <h3>Rain Level</h3>
+              <h3>Rain Detection</h3>
               <p class="value" id="rain">—</p>
-              <span class="unit">%</span>
+              <span class="unit" id="rain-unit">%</span>
               <div class="status" id="rain-status">—</div>
+              <div class="rain-indicator">
+                <div class="rain-fill" id="rain-fill"></div>
+                <div class="rain-drops" id="rain-drops"></div>
+              </div>
             </div>
             <div class="stat-card light">
               <h3>Light Intensity</h3>
               <p class="value" id="light">—</p>
-              <span class="unit">lux</span>
+              <span class="unit">%</span>
               <div class="status" id="light-status">—</div>
+              <div class="light-indicator">
+                <div class="light-fill" id="light-fill"></div>
+                <div class="light-glow" id="light-glow"></div>
+              </div>
             </div>
           </div>
         </div>
@@ -760,6 +842,31 @@
         </div>
 
         <div class="card" style="margin-top: 20px;">
+          <div class="card-title">Environment Status</div>
+          <div style="margin-bottom: 16px;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+              <span class="muted">Light Intensity:</span>
+              <span id="side-light" style="font-weight: 600;">—%</span>
+            </div>
+            <div class="light-indicator">
+              <div class="light-fill" id="side-light-fill"></div>
+              <div class="light-glow" id="side-light-glow"></div>
+            </div>
+          </div>
+          
+          <div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+              <span class="muted">Rain Detection:</span>
+              <span id="side-rain" style="font-weight: 600;">—%</span>
+            </div>
+            <div class="rain-indicator">
+              <div class="rain-fill" id="side-rain-fill"></div>
+              <div class="rain-drops" id="side-rain-drops"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top: 20px;">
           <div class="card-title">Quick Guide</div>
           <ul class="info-list">
             <li>
@@ -852,8 +959,13 @@
     const co2StatusEl = document.getElementById('co2-status');
     const rainEl = document.getElementById('rain');
     const rainStatusEl = document.getElementById('rain-status');
+    const rainFillEl = document.getElementById('rain-fill');
+    const rainDropsEl = document.getElementById('rain-drops');
+    const rainUnitEl = document.getElementById('rain-unit');
     const lightEl = document.getElementById('light');
     const lightStatusEl = document.getElementById('light-status');
+    const lightFillEl = document.getElementById('light-fill');
+    const lightGlowEl = document.getElementById('light-glow');
     const logBody = document.getElementById('log-table-body');
     
     // Air quality elements
@@ -861,6 +973,12 @@
     const airQualityBarEl = document.getElementById('air-quality-bar');
     const sideOxygenEl = document.getElementById('side-oxygen');
     const sideCo2El = document.getElementById('side-co2');
+    const sideLightEl = document.getElementById('side-light');
+    const sideLightFillEl = document.getElementById('side-light-fill');
+    const sideLightGlowEl = document.getElementById('side-light-glow');
+    const sideRainEl = document.getElementById('side-rain');
+    const sideRainFillEl = document.getElementById('side-rain-fill');
+    const sideRainDropsEl = document.getElementById('side-rain-drops');
     
     // New trend elements
     const currentTempEl = document.getElementById('current-temp');
@@ -1086,22 +1204,68 @@
         converted.oxygen = (20.9 - (mqValue / 1023) * 5).toFixed(1); // 15.9-20.9% range
       }
       
-      // Convert rain sensor to percentage
+      // Convert rain sensor to percentage (ACTIVE LOW)
       if (rawData.rain_value !== undefined) {
         const rainValue = Number(rawData.rain_value);
-        // Assuming rain sensor gives 0 when dry and higher values when wet
-        converted.rain_percent = Math.round((rainValue / 1023) * 100);
+        // For active low sensor: 0 when wet (rain detected), 1 when dry
+        // Convert to wetness percentage: 100% when 0 (wet), 0% when 1 (dry)
+        // If using analog, values might range from 0-1023
+        // We'll assume digital for simplicity (0 or 1)
+        if (rainValue === 0) {
+          converted.rain_percent = 100; // Wet - rain detected
+        } else {
+          converted.rain_percent = 0; // Dry - no rain
+        }
+        
+        // For analog rain sensors (0-1023), we could use:
+        // converted.rain_percent = Math.round(100 - (rainValue / 1023) * 100);
       }
       
-      // Convert LDR to light intensity in lux
+      // Convert LDR to light intensity percentage (0-100%)
       if (rawData.ldr_value !== undefined) {
         const ldrValue = Number(rawData.ldr_value);
-        // Simplified conversion from LDR reading to lux
-        // This would need calibration for accurate readings
-        converted.light_lux = Math.round(Math.pow(10, (ldrValue / 1023) * 4) * 10); // 10-10000 lux range
+        // Convert LDR reading to percentage (0-100%)
+        // Higher LDR value = more light (for some sensors)
+        // Adjust based on your specific LDR characteristics
+        converted.light_percent = Math.round((ldrValue / 1023) * 100);
       }
       
       return converted;
+    }
+    
+    // Update visual indicators for rain and light
+    function updateVisualIndicators(data) {
+      // Update rain indicator
+      if (data.rain_percent !== undefined) {
+        const rainPercent = Number(data.rain_percent);
+        rainFillEl.style.width = `${rainPercent}%`;
+        sideRainFillEl.style.width = `${rainPercent}%`;
+        
+        // Show rain animation if raining
+        if (rainPercent > 50) {
+          rainDropsEl.classList.add('active');
+          sideRainDropsEl.classList.add('active');
+        } else {
+          rainDropsEl.classList.remove('active');
+          sideRainDropsEl.classList.remove('active');
+        }
+      }
+      
+      // Update light indicator
+      if (data.light_percent !== undefined) {
+        const lightPercent = Number(data.light_percent);
+        lightFillEl.style.width = `${lightPercent}%`;
+        sideLightFillEl.style.width = `${lightPercent}%`;
+        
+        // Show glow effect if bright
+        if (lightPercent > 70) {
+          lightGlowEl.classList.add('active');
+          sideLightGlowEl.classList.add('active');
+        } else {
+          lightGlowEl.classList.remove('active');
+          sideLightGlowEl.classList.remove('active');
+        }
+      }
     }
     
     // Update status indicators based on values
@@ -1158,25 +1322,25 @@
           rainStatusEl.textContent = 'Dry';
           rainStatusEl.className = 'status status-good';
         } else if (rain < 50) {
-          rainStatusEl.textContent = 'Light';
+          rainStatusEl.textContent = 'Damp';
           rainStatusEl.className = 'status status-moderate';
         } else {
-          rainStatusEl.textContent = 'Heavy';
+          rainStatusEl.textContent = 'Wet';
           rainStatusEl.className = 'status status-poor';
         }
       }
       
       // Light status
-      if (data.light_lux !== undefined) {
-        const light = Number(data.light_lux);
-        if (light >= 300 && light <= 750) {
+      if (data.light_percent !== undefined) {
+        const light = Number(data.light_percent);
+        if (light >= 30 && light <= 70) {
           lightStatusEl.textContent = 'Ideal';
           lightStatusEl.className = 'status status-good';
-        } else if (light >= 100 && light <= 1000) {
+        } else if (light >= 10 && light <= 90) {
           lightStatusEl.textContent = 'Moderate';
           lightStatusEl.className = 'status status-moderate';
         } else {
-          lightStatusEl.textContent = 'Poor';
+          lightStatusEl.textContent = 'Extreme';
           lightStatusEl.className = 'status status-poor';
         }
       }
@@ -1274,7 +1438,7 @@
         const tdPres  = `<td>${rawData.pressure ?? '—'}</td>`;
         const tdO2    = `<td>${convertedData.oxygen ?? '—'}</td>`;
         const tdCO2   = `<td>${convertedData.co2 ?? '—'}</td>`;
-        const tdLight = `<td>${convertedData.light_lux ?? '—'}</td>`;
+        const tdLight = `<td>${convertedData.light_percent ?? '—'}</td>`;
         const tdRain  = `<td>${convertedData.rain_percent ?? '—'}</td>`;
 
         tr.innerHTML = tdTime + tdTempD + tdHum + tdTempB + tdPres + tdO2 + tdCO2 + tdLight + tdRain;
@@ -1294,11 +1458,13 @@
       oxygenEl.textContent = (latest.oxygen !== undefined) ? latest.oxygen : '—';
       co2El.textContent = (latest.co2 !== undefined) ? latest.co2 : '—';
       rainEl.textContent = (latest.rain_percent !== undefined) ? latest.rain_percent : '—';
-      lightEl.textContent = (latest.light_lux !== undefined) ? latest.light_lux : '—';
+      lightEl.textContent = (latest.light_percent !== undefined) ? latest.light_percent : '—';
       
       // Update side panel values
       sideOxygenEl.textContent = (latest.oxygen !== undefined) ? latest.oxygen : '—';
       sideCo2El.textContent = (latest.co2 !== undefined) ? latest.co2 : '—';
+      sideLightEl.textContent = (latest.light_percent !== undefined) ? `${latest.light_percent}%` : '—%';
+      sideRainEl.textContent = (latest.rain_percent !== undefined) ? `${latest.rain_percent}%` : '—%';
       
       // Update current values in trend cards
       currentTempEl.textContent = (latestRaw.temperature_dht !== undefined) ? latestRaw.temperature_dht : '—';
@@ -1307,6 +1473,9 @@
       
       // Update status indicators
       updateStatusIndicators(latest);
+      
+      // Update visual indicators
+      updateVisualIndicators(latest);
 
       // Fill charts with ascending order and collect values
       for (let i = 0; i < entries.length; i++) {
