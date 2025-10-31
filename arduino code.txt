@@ -1,0 +1,102 @@
+#include <WiFi.h>
+#include <Firebase_ESP_Client.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include "DHT.h"
+
+// ---------------- WiFi ----------------
+#define WIFI_SSID "iPhone"
+#define WIFI_PASSWORD "murugaraj6385479706"
+
+// ---------------- Firebase ----------------
+#define DATABASE_URL "https://air-quality-system-50213-default-rtdb.asia-southeast1.firebasedatabase.app/"
+#define DATABASE_SECRET "wmkBGmKGJE0HEi20Qi49breLSolGbR2dB6gI9T8W"
+
+FirebaseData fbdo;
+FirebaseAuth auth;
+FirebaseConfig config;
+
+// ---------------- LCD ----------------
+LiquidCrystal_I2C lcd(0x27, 16, 2);  // I2C address may be 0x27 or 0x3F
+
+// ---------------- DHT11 ----------------
+#define DHTPIN 4
+#define DHTTYPE DHT11
+DHT dht(DHTPIN, DHTTYPE);
+
+// ---------------- MQ2 ----------------
+#define MQ2_PIN 34
+
+void setup() {
+  Serial.begin(115200);
+
+  // LCD Init
+  lcd.init();
+  lcd.backlight();
+  lcd.setCursor(0, 0);
+  lcd.print("Connecting WiFi");
+
+  // WiFi Init
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi Connected");
+  lcd.clear();
+  lcd.print("WiFi Connected");
+
+  // Firebase Config
+  config.database_url = DATABASE_URL;
+  config.signer.tokens.legacy_token = DATABASE_SECRET;
+
+  Firebase.begin(&config, &auth);
+  Firebase.reconnectWiFi(true);
+
+  // DHT Init
+  dht.begin();
+
+  delay(2000);
+  lcd.clear();
+}
+
+void loop() {
+  // Sensor readings
+  int mq2Value = analogRead(MQ2_PIN);
+  float temp = dht.readTemperature();
+  float hum = dht.readHumidity();
+
+  if (isnan(temp) || isnan(hum)) {
+    Serial.println("DHT11 error!");
+    return;
+  }
+
+  // Show on Serial
+  Serial.print("MQ2: "); Serial.print(mq2Value);
+  Serial.print("  Temp: "); Serial.print(temp);
+  Serial.print(" °C  Hum: "); Serial.print(hum); Serial.println(" %");
+
+  // Show on LCD
+  lcd.setCursor(0, 0);
+  lcd.print("T:");
+  lcd.print(temp, 1);
+  lcd.print((char)223);
+  lcd.print("C H:");
+  lcd.print(hum, 0);
+  lcd.print("%   ");
+
+  lcd.setCursor(0, 1);
+  lcd.print("Gas:");
+  lcd.print(mq2Value);
+  lcd.print("    ");
+
+  // Upload to Firebase
+  if (Firebase.ready()) {
+    Firebase.RTDB.setInt(&fbdo, "/AirQuality/Gas", mq2Value);
+    Firebase.RTDB.setFloat(&fbdo, "/AirQuality/Temperature", temp);
+    Firebase.RTDB.setFloat(&fbdo, "/AirQuality/Humidity", hum);
+    Serial.println("Data uploaded!");
+  }
+
+  delay(2000);
+}
