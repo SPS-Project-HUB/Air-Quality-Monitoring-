@@ -6,17 +6,19 @@
   <title>ESP32 Air Quality — Live Dashboard</title>
   <style>
     :root {
-      --primary: #3B82F6;
-      --primary-dark: #2563EB;
-      --secondary: #10B981;
-      --danger: #EF4444;
-      --warning: #F59E0B;
-      --dark: #1E293B;
-      --light: #F8FAFC;
-      --gray: #64748B;
-      --gray-light: #E2E8F0;
-      --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-      --card-shadow-hover: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+      --primary: #3b82f6;
+      --primary-dark: #2563eb;
+      --secondary: #10b981;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text: #1e293b;
+      --text-light: #64748b;
+      --text-muted: #94a3b8;
+      --border: #e2e8f0;
+      --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+      --radius: 12px;
     }
 
     * {
@@ -24,13 +26,12 @@
     }
 
     body {
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      font-family: 'Inter', system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       margin: 0;
-      background: linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%);
-      color: var(--dark);
-      line-height: 1.5;
-      min-height: 100vh;
       padding: 20px;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
     }
 
     .container {
@@ -43,59 +44,39 @@
       justify-content: space-between;
       align-items: center;
       margin-bottom: 24px;
-      padding: 16px 24px;
-      background: white;
-      border-radius: 16px;
-      box-shadow: var(--card-shadow);
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
     }
 
-    .header-title {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .logo {
-      width: 40px;
-      height: 40px;
-      background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
-      border-radius: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: white;
-      font-weight: bold;
-    }
-
-    h1 {
-      margin: 0;
-      font-size: 1.75rem;
+    .header-left h1 {
+      margin: 0 0 4px 0;
+      font-size: 1.8rem;
       font-weight: 700;
-      color: var(--dark);
+      color: var(--text);
     }
 
-    .subtitle {
-      color: var(--gray);
-      font-size: 0.9rem;
-      margin-top: 4px;
+    .header-left .subtitle {
+      color: var(--text-light);
+      font-size: 0.95rem;
     }
 
     .status-badge {
-      display: flex;
+      display: inline-flex;
       align-items: center;
-      gap: 8px;
-      background: var(--light);
-      padding: 8px 16px;
-      border-radius: 50px;
-      font-size: 0.875rem;
+      gap: 6px;
+      padding: 6px 12px;
+      background: var(--card-bg);
+      border-radius: 20px;
+      font-size: 0.85rem;
       font-weight: 500;
+      box-shadow: var(--shadow);
     }
 
     .status-indicator {
-      width: 10px;
-      height: 10px;
+      width: 8px;
+      height: 8px;
       border-radius: 50%;
-      background: var(--gray);
+      background: var(--text-muted);
     }
 
     .status-indicator.connected {
@@ -115,74 +96,103 @@
       gap: 20px;
     }
 
+    @media (max-width: 1024px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
     .card {
-      background: white;
+      background: var(--card-bg);
       padding: 20px;
-      border-radius: 16px;
-      box-shadow: var(--card-shadow);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
       transition: transform 0.2s, box-shadow 0.2s;
     }
 
     .card:hover {
-      box-shadow: var(--card-shadow-hover);
       transform: translateY(-2px);
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
     }
 
     .card-title {
       margin: 0 0 16px 0;
-      font-size: 1.125rem;
+      font-size: 1.2rem;
       font-weight: 600;
-      color: var(--dark);
+      color: var(--text);
       display: flex;
       align-items: center;
       justify-content: space-between;
     }
 
-    .cards-row {
-      display: flex;
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
       gap: 16px;
-      margin-bottom: 16px;
+      margin-bottom: 20px;
     }
 
-    .stat {
-      flex: 1;
+    .stat-card {
+      background: var(--card-bg);
       padding: 16px;
-      border-radius: 12px;
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
       text-align: center;
-      background: var(--light);
       border-left: 4px solid var(--primary);
     }
 
-    .stat h3 {
-      margin: 0;
-      font-size: 0.875rem;
-      color: var(--gray);
+    .stat-card.temp {
+      border-left-color: #ef4444;
+    }
+
+    .stat-card.humidity {
+      border-left-color: #3b82f6;
+    }
+
+    .stat-card.pressure {
+      border-left-color: #10b981;
+    }
+
+    .stat-card.gas {
+      border-left-color: #f59e0b;
+    }
+
+    .stat-card h3 {
+      margin: 0 0 8px 0;
+      font-size: 0.9rem;
+      color: var(--text-light);
       font-weight: 500;
     }
 
-    .stat p {
-      margin: 8px 0 0;
+    .stat-card .value {
+      margin: 0;
       font-size: 1.5rem;
       font-weight: 700;
-      color: var(--dark);
+      color: var(--text);
+    }
+
+    .stat-card .unit {
+      font-size: 0.9rem;
+      color: var(--text-light);
+      font-weight: 500;
     }
 
     table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 0.875rem;
+      font-size: 0.9rem;
     }
 
     th, td {
-      padding: 12px 16px;
-      border-bottom: 1px solid var(--gray-light);
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
       text-align: left;
     }
 
     th {
-      font-size: 0.8rem;
-      color: var(--gray);
       font-weight: 600;
+      color: var(--text-light);
+      font-size: 0.85rem;
       text-transform: uppercase;
       letter-spacing: 0.5px;
     }
@@ -191,69 +201,49 @@
       border-bottom: none;
     }
 
-    tr:hover td {
-      background: #F8FAFC;
+    .scroll-container {
+      max-height: 320px;
+      overflow: auto;
+      border-radius: 8px;
     }
 
-    .small {
-      font-size: 0.8rem;
-      color: var(--gray);
+    .scroll-container::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .scroll-container::-webkit-scrollbar-track {
+      background: #f1f5f9;
+      border-radius: 3px;
+    }
+
+    .scroll-container::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 3px;
+    }
+
+    .charts-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 16px;
+    }
+
+    .chart-container {
+      background: var(--card-bg);
+      padding: 16px;
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .chart-container h4 {
+      margin: 0 0 12px 0;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text);
     }
 
     canvas {
       max-width: 100%;
       height: 160px;
-    }
-
-    footer {
-      margin-top: 24px;
-      text-align: center;
-      padding: 16px;
-      font-size: 0.875rem;
-      color: var(--gray);
-    }
-
-    .muted {
-      color: var(--gray);
-      font-size: 0.85rem;
-    }
-
-    .metric-highlight {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 16px;
-    }
-
-    .metric-value {
-      font-size: 2rem;
-      font-weight: 700;
-      color: var(--primary);
-    }
-
-    .metric-label {
-      font-size: 0.9rem;
-      color: var(--gray);
-    }
-
-    .chart-container {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 16px;
-    }
-
-    .chart-card {
-      padding: 16px;
-      border-radius: 12px;
-      background: white;
-    }
-
-    .chart-title {
-      font-size: 0.9rem;
-      font-weight: 600;
-      margin: 0 0 12px 0;
-      text-align: center;
-      color: var(--dark);
     }
 
     .info-list {
@@ -263,57 +253,57 @@
     }
 
     .info-list li {
-      padding: 12px 0;
-      border-bottom: 1px solid var(--gray-light);
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
     }
 
     .info-list li:last-child {
       border-bottom: none;
     }
 
-    .badge {
-      display: inline-block;
-      padding: 4px 8px;
-      border-radius: 4px;
-      font-size: 0.75rem;
-      font-weight: 600;
-    }
-
-    .badge-primary {
-      background: #DBEAFE;
+    .info-icon {
+      width: 20px;
+      height: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #dbeafe;
+      border-radius: 50%;
       color: var(--primary);
+      font-size: 0.8rem;
+      font-weight: bold;
     }
 
-    .badge-success {
-      background: #D1FAE5;
-      color: #065F46;
+    footer {
+      margin-top: 30px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+      text-align: center;
+      color: var(--text-light);
+      font-size: 0.85rem;
     }
 
-    /* Responsive adjustments */
-    @media (max-width: 1024px) {
-      .grid {
-        grid-template-columns: 1fr;
-      }
-      
-      .chart-container {
-        grid-template-columns: 1fr;
-      }
+    .muted {
+      color: var(--text-muted);
     }
 
-    @media (max-width: 768px) {
-      .cards-row {
-        flex-direction: column;
-      }
-      
-      header {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 12px;
-      }
-      
-      .status-badge {
-        align-self: flex-end;
-      }
+    .last-updated {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-top: 8px;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 30px 20px;
+      color: var(--text-light);
+    }
+
+    .empty-state p {
+      margin: 8px 0 0 0;
     }
   </style>
   <!-- Chart.js (for charts) -->
@@ -322,16 +312,13 @@
 <body>
   <div class="container">
     <header>
-      <div class="header-title">
-        <div class="logo">AQ</div>
-        <div>
-          <h1>ESP32 Air Quality Dashboard</h1>
-          <div class="subtitle">Real-time environmental monitoring from Firebase</div>
-        </div>
+      <div class="header-left">
+        <h1>ESP32 Air Quality Dashboard</h1>
+        <div class="subtitle">Real-time monitoring from Firebase Realtime Database</div>
       </div>
       <div class="status-badge">
         <div class="status-indicator" id="status-indicator"></div>
-        <span id="status">Connecting...</span>
+        <span id="status-text">Connecting...</span>
       </div>
     </header>
 
@@ -339,46 +326,48 @@
       <!-- Left: main content -->
       <div>
         <div class="card">
-          <div class="metric-highlight">
-            <div>
-              <h2 id="latest-title" style="margin:0 0 4px 0;">Latest Reading</h2>
-              <div class="small" id="latest-time">—</div>
-            </div>
-            <div style="text-align:right">
-              <div class="small">Total Entries</div>
-              <div id="entry-count" style="font-weight:700; font-size:1.5rem;">0</div>
-            </div>
+          <div class="card-title">
+            <span>Current Readings</span>
+            <div class="last-updated" id="latest-time">Last updated: —</div>
           </div>
-
-          <div class="cards-row" style="margin-top:20px;">
-            <div class="stat">
+          
+          <div class="stats-grid">
+            <div class="stat-card temp">
               <h3>Temperature (DHT)</h3>
-              <p id="temp-dht">— °C</p>
+              <p class="value" id="temp-dht">—</p>
+              <span class="unit">°C</span>
             </div>
-            <div class="stat">
+            <div class="stat-card humidity">
               <h3>Humidity</h3>
-              <p id="hum">— %</p>
+              <p class="value" id="hum">—</p>
+              <span class="unit">%</span>
             </div>
-            <div class="stat">
+            <div class="stat-card pressure">
               <h3>Pressure (BMP)</h3>
-              <p id="pres">— hPa</p>
+              <p class="value" id="pres">—</p>
+              <span class="unit">hPa</span>
+            </div>
+            <div class="stat-card gas">
+              <h3>Gas Level</h3>
+              <p class="value" id="gas">—</p>
+              <span class="unit">ppm</span>
             </div>
           </div>
         </div>
 
-        <div class="card" style="margin-top:20px;">
-          <h3 class="card-title">
-            Recent Logs
-            <span class="badge badge-primary" id="table-count">0 records</span>
-          </h3>
-          <div style="max-height:340px; overflow:auto;">
+        <div class="card" style="margin-top: 20px;">
+          <div class="card-title">
+            <span>Recent Data Logs</span>
+            <span class="muted" id="entry-count">0 entries</span>
+          </div>
+          <div class="scroll-container">
             <table>
               <thead>
                 <tr>
                   <th>Time</th>
-                  <th>Temp(DHT)</th>
+                  <th>Temp (DHT)</th>
                   <th>Humidity</th>
-                  <th>Temp(BMP)</th>
+                  <th>Temp (BMP)</th>
                   <th>Pressure</th>
                   <th>Gas</th>
                   <th>Light</th>
@@ -386,25 +375,30 @@
                 </tr>
               </thead>
               <tbody id="log-table-body">
-                <tr><td colspan="8" class="small" style="text-align:center; padding: 20px;">Waiting for data…</td></tr>
+                <tr>
+                  <td colspan="8" class="empty-state">
+                    <div>No data available</div>
+                    <p>Waiting for sensor readings...</p>
+                  </td>
+                </tr>
               </tbody>
             </table>
           </div>
         </div>
 
-        <div class="card" style="margin-top:20px;">
-          <h3 class="card-title">Trends (Last 50 Samples)</h3>
-          <div class="chart-container">
-            <div class="chart-card">
-              <div class="chart-title">Temperature</div>
+        <div class="card" style="margin-top: 20px;">
+          <div class="card-title">Trends (Last 50 Readings)</div>
+          <div class="charts-grid">
+            <div class="chart-container">
+              <h4>Temperature (°C)</h4>
               <canvas id="chart-temp"></canvas>
             </div>
-            <div class="chart-card">
-              <div class="chart-title">Humidity</div>
+            <div class="chart-container">
+              <h4>Humidity (%)</h4>
               <canvas id="chart-hum"></canvas>
             </div>
-            <div class="chart-card">
-              <div class="chart-title">Pressure</div>
+            <div class="chart-container">
+              <h4>Pressure (hPa)</h4>
               <canvas id="chart-pres"></canvas>
             </div>
           </div>
@@ -414,63 +408,69 @@
       <!-- Right: side panel -->
       <aside>
         <div class="card">
-          <h3 class="card-title">Connection Status</h3>
-          <div class="small">Firebase Project</div>
-          <div id="fb-url" class="small" style="word-break:break-all; margin-bottom:12px;"></div>
+          <div class="card-title">Connection Status</div>
+          <div class="muted" style="margin-bottom: 8px;">Firebase URL</div>
+          <div id="fb-url" class="muted" style="word-break: break-all; margin-bottom: 16px; font-size: 0.85rem;"></div>
           
-          <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-            <span class="small">Database:</span>
-            <span id="db-status" class="badge" style="background: #FEF3C7; color: #92400E;">Checking</span>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+            <span class="muted">Database:</span>
+            <span id="db-status" style="font-weight: 600;">—</span>
           </div>
-          
           <div style="display: flex; justify-content: space-between;">
-            <span class="small">Last Update:</span>
-            <span id="last-update" class="small">—</span>
+            <span class="muted">Last Sync:</span>
+            <span id="last-sync" style="font-weight: 600;">—</span>
           </div>
         </div>
 
-        <div class="card" style="margin-top:20px;">
-          <h3 class="card-title">Sensor Status</h3>
+        <div class="card" style="margin-top: 20px;">
+          <div class="card-title">Quick Guide</div>
           <ul class="info-list">
-            <li style="display: flex; justify-content: space-between;">
-              <span>DHT Sensor</span>
-              <span id="dht-status" class="badge badge-success">Active</span>
+            <li>
+              <div class="info-icon">1</div>
+              <div>Push sensor data to <code>/esp32_data_log/</code> from ESP32</div>
             </li>
-            <li style="display: flex; justify-content: space-between;">
-              <span>BMP Sensor</span>
-              <span id="bmp-status" class="badge badge-success">Active</span>
+            <li>
+              <div class="info-icon">2</div>
+              <div>Dashboard updates automatically in real-time</div>
             </li>
-            <li style="display: flex; justify-content: space-between;">
-              <span>Gas Sensor</span>
-              <span id="gas-status" class="badge" style="background: #FEF3C7; color: #92400E;">Unknown</span>
-            </li>
-            <li style="display: flex; justify-content: space-between;">
-              <span>Light Sensor</span>
-              <span id="light-status" class="badge" style="background: #FEF3C7; color: #92400E;">Unknown</span>
+            <li>
+              <div class="info-icon">3</div>
+              <div>Deploy by hosting on GitHub Pages or similar</div>
             </li>
           </ul>
         </div>
 
-        <div class="card" style="margin-top:20px;">
-          <h3 class="card-title">Quick Guide</h3>
-          <ol style="padding-left: 20px; margin: 0;">
-            <li class="small" style="margin-bottom: 8px;">Push sensor data to <code>/esp32_data_log/</code> from ESP32</li>
-            <li class="small" style="margin-bottom: 8px;">Dashboard updates automatically in real-time</li>
-            <li class="small">Deploy via GitHub Pages for public access</li>
-          </ol>
+        <div class="card" style="margin-top: 20px;">
+          <div class="card-title">Sensor Information</div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div>
+              <div class="muted">DHT Sensor</div>
+              <div style="font-weight: 600;">Temp & Humidity</div>
+            </div>
+            <div>
+              <div class="muted">BMP Sensor</div>
+              <div style="font-weight: 600;">Pressure & Temp</div>
+            </div>
+            <div>
+              <div class="muted">MQ Sensor</div>
+              <div style="font-weight: 600;">Gas Quality</div>
+            </div>
+            <div>
+              <div class="muted">LDR</div>
+              <div style="font-weight: 600;">Light Level</div>
+            </div>
+          </div>
         </div>
       </aside>
     </div>
 
     <footer>
-      <div>ESP32 Air Quality Monitoring System • <span class="small">Live data from Firebase Realtime Database</span></div>
+      <div>Made for ESP32 Air Quality Monitoring • <span class="muted">Real-time data from Firebase</span></div>
     </footer>
   </div>
 
-  <!-- Firebase module SDK; uses your config (replace if needed) -->
+  <!-- Firebase module SDK -->
   <script type="module">
-    // ... (The JavaScript code remains exactly the same as in the original)
-    // Only the CSS has been updated for a better design
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
     import {
       getDatabase,
@@ -482,7 +482,7 @@
       get
     } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
 
-    // ---------- PASTE YOUR FIREBASE CONFIG BELOW ----------
+    // ---------- FIREBASE CONFIG ----------
     const firebaseConfig = {
       apiKey: "AIzaSyCcFVfrAO-EOEqQcs3oZtJVLTgpF32uyb4",
       authDomain: "air-quality-e5e71.firebaseapp.com",
@@ -499,85 +499,73 @@
 
     // UI elements
     const fbUrlEl = document.getElementById('fb-url');
-    const statusEl = document.getElementById('status');
     const statusIndicator = document.getElementById('status-indicator');
+    const statusText = document.getElementById('status-text');
     const dbStatusEl = document.getElementById('db-status');
+    const lastSyncEl = document.getElementById('last-sync');
     const entryCountEl = document.getElementById('entry-count');
-    const tableCountEl = document.getElementById('table-count');
     const latestTimeEl = document.getElementById('latest-time');
-    const lastUpdateEl = document.getElementById('last-update');
     const tempDhtEl = document.getElementById('temp-dht');
     const humEl = document.getElementById('hum');
     const presEl = document.getElementById('pres');
+    const gasEl = document.getElementById('gas');
     const logBody = document.getElementById('log-table-body');
 
-    // Sensor status elements
-    const dhtStatusEl = document.getElementById('dht-status');
-    const bmpStatusEl = document.getElementById('bmp-status');
-    const gasStatusEl = document.getElementById('gas-status');
-    const lightStatusEl = document.getElementById('light-status');
-
     fbUrlEl.textContent = firebaseConfig.databaseURL || '—';
+
+    // Update connection status
+    function updateStatus(status, isConnected) {
+      statusText.textContent = status;
+      statusIndicator.className = 'status-indicator';
+      if (isConnected) {
+        statusIndicator.classList.add('connected');
+        dbStatusEl.textContent = 'Connected';
+        dbStatusEl.style.color = '#10b981';
+      } else {
+        dbStatusEl.textContent = 'Disconnected';
+        dbStatusEl.style.color = '#ef4444';
+      }
+    }
 
     // chart setups
     const ctxT = document.getElementById('chart-temp').getContext('2d');
     const ctxH = document.getElementById('chart-hum').getContext('2d');
     const ctxP = document.getElementById('chart-pres').getContext('2d');
 
-    function emptyDataset(color) {
-      return { 
-        labels: [], 
-        datasets: [{ 
-          label: 'Value', 
-          data: [], 
-          tension: 0.4, 
-          pointRadius: 2,
-          borderColor: color || '#3B82F6',
-          backgroundColor: 'rgba(59, 130, 246, 0.1)',
-          borderWidth: 2,
-          fill: true
-        }] 
+    function createChartConfig(color) {
+      return {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [{
+            label: '',
+            data: [],
+            borderColor: color,
+            backgroundColor: color + '20',
+            tension: 0.4,
+            pointRadius: 0,
+            borderWidth: 2,
+            fill: true
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { display: false },
+            y: { 
+              display: true,
+              grid: { color: 'rgba(0,0,0,0.05)' }
+            }
+          }
+        }
       };
     }
-    
-    const chartTemp = new Chart(ctxT, { 
-      type: 'line', 
-      data: emptyDataset('#EF4444'), 
-      options: { 
-        plugins: { legend: { display: false } }, 
-        scales: { 
-          x: { display: false, grid: { display: false } }, 
-          y: { grid: { color: 'rgba(0,0,0,0.05)' } }
-        },
-        maintainAspectRatio: false
-      } 
-    });
-    
-    const chartHum = new Chart(ctxH, { 
-      type: 'line', 
-      data: emptyDataset('#10B981'), 
-      options: { 
-        plugins: { legend: { display: false } }, 
-        scales: { 
-          x: { display: false, grid: { display: false } }, 
-          y: { grid: { color: 'rgba(0,0,0,0.05)' } }
-        },
-        maintainAspectRatio: false
-      } 
-    });
-    
-    const chartPres = new Chart(ctxP, { 
-      type: 'line', 
-      data: emptyDataset('#8B5CF6'), 
-      options: { 
-        plugins: { legend: { display: false } }, 
-        scales: { 
-          x: { display: false, grid: { display: false } }, 
-          y: { grid: { color: 'rgba(0,0,0,0.05)' } }
-        },
-        maintainAspectRatio: false
-      } 
-    });
+
+    const chartTemp = new Chart(ctxT, createChartConfig('#ef4444'));
+    const chartHum = new Chart(ctxH, createChartConfig('#3b82f6'));
+    const chartPres = new Chart(ctxP, createChartConfig('#10b981'));
 
     // helper: convert numeric string key (timestamp ms) to readable time
     function timeFromKey(k) {
@@ -585,6 +573,11 @@
       if (!isFinite(n)) return k;
       const d = new Date(n);
       return d.toLocaleString();
+    }
+
+    function formatTimeShort(timestamp) {
+      const d = new Date(timestamp);
+      return d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
     }
 
     // Keep small rolling arrays
@@ -597,75 +590,21 @@
       chart.update('none');
     }
 
-    // Update sensor status indicators
-    function updateSensorStatus(latestData) {
-      // DHT Status
-      if (latestData.temperature_dht !== undefined && latestData.humidity !== undefined) {
-        dhtStatusEl.textContent = 'Active';
-        dhtStatusEl.className = 'badge badge-success';
-      } else {
-        dhtStatusEl.textContent = 'Inactive';
-        dhtStatusEl.style.background = '#FEE2E2';
-        dhtStatusEl.style.color = '#991B1B';
-      }
-      
-      // BMP Status
-      if (latestData.temperature_bmp !== undefined && latestData.pressure !== undefined) {
-        bmpStatusEl.textContent = 'Active';
-        bmpStatusEl.className = 'badge badge-success';
-      } else {
-        bmpStatusEl.textContent = 'Inactive';
-        bmpStatusEl.style.background = '#FEE2E2';
-        bmpStatusEl.style.color = '#991B1B';
-      }
-      
-      // Gas Sensor Status
-      if (latestData.mq_sensor !== undefined) {
-        gasStatusEl.textContent = 'Active';
-        gasStatusEl.className = 'badge badge-success';
-      } else {
-        gasStatusEl.textContent = 'No Data';
-        gasStatusEl.style.background = '#FEF3C7';
-        gasStatusEl.style.color = '#92400E';
-      }
-      
-      // Light Sensor Status
-      if (latestData.ldr_value !== undefined) {
-        lightStatusEl.textContent = 'Active';
-        lightStatusEl.className = 'badge badge-success';
-      } else {
-        lightStatusEl.textContent = 'No Data';
-        lightStatusEl.style.background = '#FEF3C7';
-        lightStatusEl.style.color = '#92400E';
-      }
-    }
-
     // Watch the last N entries under /esp32_data_log
     const logRef = query(ref(db, '/esp32_data_log'), orderByKey(), limitToLast(100));
     onValue(logRef, (snapshot) => {
       const data = snapshot.val();
       if (!data) {
-        statusEl.textContent = 'No data';
-        statusIndicator.className = 'status-indicator';
-        dbStatusEl.textContent = 'No Data';
-        dbStatusEl.style.background = '#FEF3C7';
-        dbStatusEl.style.color = '#92400E';
+        updateStatus('No data available', false);
         return;
       }
       
-      statusEl.textContent = 'Live';
-      statusIndicator.className = 'status-indicator connected';
-      dbStatusEl.textContent = 'Connected';
-      dbStatusEl.style.background = '#D1FAE5';
-      dbStatusEl.style.color = '#065F46';
-      
-      // Update last update time
-      lastUpdateEl.textContent = new Date().toLocaleTimeString();
+      updateStatus('Live updating', true);
+      lastSyncEl.textContent = new Date().toLocaleTimeString();
       
       // Convert object of keys -> values into array sorted by key (ascending)
       const entries = Object.keys(data).map(k => ({ key:k, v:data[k] })).sort((a,b)=>Number(a.key)-Number(b.key));
-      entryCountEl.textContent = entries.length;
-      tableCountEl.textContent = `${entries.length} records`;
+      entryCountEl.textContent = `${entries.length} entries`;
 
       // Clear table body and charts
       logBody.innerHTML = '';
@@ -681,7 +620,7 @@
         const ts = val.timestamp_ms ? Number(val.timestamp_ms) : Number(e.key) || Date.now();
         const tr = document.createElement('tr');
 
-        const ttime = new Date(ts).toLocaleString();
+        const ttime = new Date(ts).toLocaleTimeString();
         const tdTime = `<td class="small">${ttime}</td>`;
         const tdTempD = `<td>${val.temperature_dht ?? '—'}</td>`;
         const tdHum   = `<td>${val.humidity ?? '—'}</td>`;
@@ -697,43 +636,38 @@
 
       // latest entry = last element in entries
       const latest = entries[entries.length - 1].v;
-      latestTimeEl.textContent = timeFromKey(entries[entries.length - 1].key);
-      tempDhtEl.textContent = (latest.temperature_dht !== undefined) ? `${latest.temperature_dht} °C` : '— °C';
-      humEl.textContent = (latest.humidity !== undefined) ? `${latest.humidity} %` : '— %';
-      presEl.textContent = (latest.pressure !== undefined) ? `${latest.pressure} hPa` : '— hPa';
+      const latestTime = new Date(Number(entries[entries.length - 1].key));
+      latestTimeEl.textContent = `Last updated: ${latestTime.toLocaleTimeString()}`;
       
-      // Update sensor status
-      updateSensorStatus(latest);
+      tempDhtEl.textContent = (latest.temperature_dht !== undefined) ? latest.temperature_dht : '—';
+      humEl.textContent = (latest.humidity !== undefined) ? latest.humidity : '—';
+      presEl.textContent = (latest.pressure !== undefined) ? latest.pressure : '—';
+      gasEl.textContent = (latest.mq_sensor !== undefined) ? latest.mq_sensor : '—';
 
       // Fill charts with ascending order
       for (let i = 0; i < entries.length; i++) {
         const e = entries[i];
         const val = e.v || {};
         const ts = e.key;
-        const label = new Date(Number(ts)).toLocaleTimeString();
+        const label = formatTimeShort(Number(ts));
         if (val.temperature_dht !== undefined) pushPoint(chartTemp, label, Number(val.temperature_dht));
         if (val.humidity !== undefined) pushPoint(chartHum, label, Number(val.humidity));
         if (val.pressure !== undefined) pushPoint(chartPres, label, Number(val.pressure));
       }
     }, (err) => {
-      statusEl.textContent = 'Error: ' + err;
-      statusIndicator.className = 'status-indicator';
-      dbStatusEl.textContent = 'Error';
-      dbStatusEl.style.background = '#FEE2E2';
-      dbStatusEl.style.color = '#991B1B';
+      updateStatus('Connection error', false);
+      console.error('Firebase error:', err);
     });
 
-    // Optional: fetch once quickly to show immediate status
+    // Initial fetch to show status
     (async () => {
       try {
         const snap = await get(ref(db, '/esp32_data_log'));
         if (!snap.exists()) {
-          statusEl.textContent = 'No data yet';
-          statusIndicator.className = 'status-indicator';
+          updateStatus('No data yet', false);
         }
       } catch(e) {
-        statusEl.textContent = 'Fetch error';
-        statusIndicator.className = 'status-indicator';
+        updateStatus('Connection failed', false);
       }
     })();
   </script>
